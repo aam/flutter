@@ -73,6 +73,7 @@ Future<Null> build({
       sdkRoot: artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath),
       incrementalCompilerByteStorePath: fs.path.absolute(getIncrementalCompilerByteStoreDirectory()),
       mainPath: fs.file(mainPath).absolute.path,
+      depfilePath: depfilePath,
     );
     if (kernelBinaryFilename == null) {
       throwToolExit('Compiler terminated unexpectedly on $mainPath');

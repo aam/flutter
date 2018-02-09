@@ -62,7 +62,8 @@ Future<String> compile(
     bool aot: false,
     List<String> extraFrontEndOptions,
     String incrementalCompilerByteStorePath,
-    String packagesPath}) async {
+    String packagesPath,
+    String depfilePath}) async {
   final String frontendServer = artifacts.getArtifactPath(
     Artifact.frontendServerSnapshotForEngineDartSdk
   );
@@ -76,6 +77,8 @@ Future<String> compile(
     '--sdk-root',
     sdkRoot,
     '--strong',
+    '--dep-file',
+    depfilePath
   ];
   if (!linkPlatformKernelIn)
     command.add('--no-link-platform');
