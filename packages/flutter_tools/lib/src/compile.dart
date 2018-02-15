@@ -69,7 +69,6 @@ Future<String> compile(
     frontendServer,
     '--sdk-root',
     sdkRoot,
-    '--strong',
   ];
   if (trackWidgetCreation)
     command.add('--track-widget-creation');
@@ -163,7 +162,6 @@ class ResidentCompiler {
       '--sdk-root',
       _sdkRoot,
       '--incremental',
-      '--strong'
     ];
     if (outputPath != null) {
       args.addAll(<String>['--output-dill', outputPath]);

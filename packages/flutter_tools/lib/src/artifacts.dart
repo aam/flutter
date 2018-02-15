@@ -45,7 +45,7 @@ String _artifactToFileName(Artifact artifact) {
     case Artifact.isolateSnapshotData:
       return 'isolate_snapshot.bin';
     case Artifact.platformKernelDill:
-      return 'platform_strong.dill';
+      return 'platform.dill';
     case Artifact.platformLibrariesJson:
       return 'libraries.json';
     case Artifact.flutterPatchedSdkPath:

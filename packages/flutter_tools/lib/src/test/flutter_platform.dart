@@ -216,26 +216,7 @@ class _FlutterPlatform extends PlatformPlugin {
           return null;
         }
 
-        // bundlePath needs to point to a folder with `platform.dill` file.
-        final Directory tempBundleDirectory = fs.systemTempDirectory
-            .createTempSync('flutter_bundle_directory');
-        finalizers.add(() async {
-          printTrace('test $ourTestCount: deleting temporary bundle directory');
-          tempBundleDirectory.deleteSync(recursive: true);
-        });
-
-        // copy 'vm_platform_strong.dill' into 'platform.dill'
-        final File vmPlatformStrongDill = fs.file(
-          artifacts.getArtifactPath(Artifact.platformKernelDill),
-        );
-        final File platformDill = vmPlatformStrongDill.copySync(
-          tempBundleDirectory.childFile('platform.dill').path,
-        );
-        if (!platformDill.existsSync()) {
-          printError('unexpected error copying platform kernel file');
-        }
-
-        bundlePath = tempBundleDirectory.path;
+        bundlePath = artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath());
         strongMode = true;
       }
 
