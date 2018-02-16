@@ -216,7 +216,7 @@ class _FlutterPlatform extends PlatformPlugin {
           return null;
         }
 
-        bundlePath = artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath());
+        bundlePath = artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath);
         strongMode = true;
       }
 
