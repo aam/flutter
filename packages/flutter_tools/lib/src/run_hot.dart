@@ -103,6 +103,18 @@ class HotRunner extends ResidentRunner {
     }
   }
 
+  Future<Null> _compileExpressionService(String expression) async {
+    // Compile expression
+    final OperationResult result =
+        await flutterDevices.first.generator.compileExpression(expression);
+    if (!result.isOk) {
+      throw new rpc.RpcException(
+        rpc_error_code.INTERNAL_ERROR,
+        'Unable to compile expression $expression',
+      );
+    }
+  }
+
   Future<int> attach({
     Completer<DebugConnectionInfo> connectionInfoCompleter,
     Completer<Null> appStartedCompleter,
@@ -110,7 +122,8 @@ class HotRunner extends ResidentRunner {
   }) async {
     try {
       await connectToServiceProtocol(viewFilter: viewFilter,
-          reloadSources: _reloadSourcesService);
+          reloadSources: _reloadSourcesService,
+          compileExpression: _compileExpressionService);
     } catch (error) {
       printError('Error connecting to the service protocol: $error');
       return 2;

@@ -4,6 +4,8 @@
 
 import 'dart:async';
 
+import 'package:json_rpc_2/error_code.dart' as rpc_error_code;
+import 'package:json_rpc_2/json_rpc_2.dart' as rpc;
 import 'package:meta/meta.dart';
 
 import 'base/file_system.dart';
@@ -31,6 +33,19 @@ class ColdRunner extends ResidentRunner {
 
   final bool traceStartup;
   final String applicationBinary;
+
+  Future<Null> _compileExpressionService(String expression) async {
+    // Compile expression
+    final OperationResult result =
+    await flutterDevices.first.generator.compileExpression(expression);
+    if (!result.isOk) {
+      throw new rpc.RpcException(
+        rpc_error_code.INTERNAL_ERROR,
+        'Unable to compile expression $expression',
+      );
+    }
+  }
+
 
   @override
   Future<int> run({
@@ -62,7 +77,7 @@ class ColdRunner extends ResidentRunner {
 
     // Connect to observatory.
     if (debuggingOptions.debuggingEnabled)
-      await connectToServiceProtocol();
+      await connectToServiceProtocol(compileExpression: _compileExpressionService);
 
     if (flutterDevices.first.observatoryUris != null) {
       // For now, only support one debugger connection.

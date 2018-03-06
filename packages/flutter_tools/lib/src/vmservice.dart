@@ -41,6 +41,8 @@ typedef Future<Null> ReloadSources(
   bool pause,
 });
 
+typedef Future<Null> CompileExpression(String expression);
+
 const String _kRecordingType = 'vmservice';
 
 StreamChannel<String> _defaultOpenChannel(Uri uri) =>
@@ -63,6 +65,7 @@ class VMService {
     this.wsAddress,
     this._requestTimeout,
     ReloadSources reloadSources,
+    CompileExpression compileExpression,
   ) {
     _vm = new VM._empty(this);
     _peer.listen().catchError(_connectionError.completeError);
@@ -99,6 +102,36 @@ class VMService {
       // have no effect
       _peer.sendNotification('_registerService', <String, String>{
         'service': 'reloadSources',
+        'alias': 'Flutter Tools'
+      });
+    }
+
+    if (compileExpression != null) {
+      _peer.registerMethod('compileExpression', (rpc.Parameters params) async {
+        final String expression = params['expression'].value;
+
+        if (expression is! String || expression.isEmpty)
+          throw new rpc.RpcException.invalidParams('Invalid \'expression\': $expression');
+
+        try {
+          await compileExpression(expression);
+          return <String, String>{'type': 'Success'};
+        } on rpc.RpcException {
+          rethrow;
+        } catch (e, st) {
+          throw new rpc.RpcException(rpc_error_code.SERVER_ERROR,
+              'Error during compile expression: $e\n$st');
+        }
+      });
+
+      // If the Flutter Engine doesn't support service registration this will
+      // have no effect
+      _peer.sendNotification('_registerService', <String, String>{
+        'service': 'reloadSources',
+        'alias': 'Flutter Tools'
+      });
+      _peer.sendNotification('_registerService', <String, String>{
+        'service': 'compileExpression',
         'alias': 'Flutter Tools'
       });
     }
@@ -144,11 +177,12 @@ class VMService {
     Uri httpUri, {
     Duration requestTimeout: kDefaultRequestTimeout,
     ReloadSources reloadSources,
+    CompileExpression compileExpression,
   }) async {
     final Uri wsUri = httpUri.replace(scheme: 'ws', path: fs.path.join(httpUri.path, 'ws'));
     final StreamChannel<String> channel = _openChannel(wsUri);
     final rpc.Peer peer = new rpc.Peer.withoutJson(jsonDocument.bind(channel));
-    final VMService service = new VMService._(peer, httpUri, wsUri, requestTimeout, reloadSources);
+    final VMService service = new VMService._(peer, httpUri, wsUri, requestTimeout, reloadSources, compileExpression);
     // This call is to ensure we are able to establish a connection instead of
     // keeping on trucking and failing farther down the process.
     await service._sendRequest('getVersion', const <String, dynamic>{});
