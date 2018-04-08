@@ -489,7 +489,7 @@ class DevFS {
           if (content is DevFSFileContent) {
             filesUris.add(uri);
             invalidatedFiles.add(content.file.uri.toString());
-            printTrace("Invalidating ${content.file.uri.toString()}");
+            printTrace('Invalidating ${content.file.uri.toString()}');
             numBytes -= content.size;
           }
         }
