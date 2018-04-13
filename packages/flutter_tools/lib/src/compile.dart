@@ -59,13 +59,9 @@ class _StdoutHandler {
   }
 }
 
-<<<<<<< HEAD
 // TODO(aam): Since frontend_server and flutter tools run on the same
 // version of dart sdk, there is no need for frontend_server anymore.
-Future<String> compile(
-=======
 Future<CompilerOutput> compile(
->>>>>>> master
     {String sdkRoot,
     String mainPath,
     String outputFilePath,
