@@ -50,6 +50,15 @@ class GenSnapshot {
       '--print_snapshot_sizes',
     ]..addAll(additionalArgs);
     final String snapshotterPath = artifacts.getArtifactPath(Artifact.genSnapshot, snapshotType.platform, snapshotType.mode);
+
+    // iOS gen_snapshot is a multi-arch binary. Running as an i386 binary will
+    // generate armv7 code. Running as an x86_64 binary will generate arm64
+    // code. /usr/bin/arch can be used to run binaries with the specified
+    // architecture.
+    if (snapshotType.platform == TargetPlatform.ios) {
+      // TODO(cbracken): for the moment, always generate only arm64 code.
+      return runCommandAndStreamOutput(<String>['/usr/bin/arch', '-x86_64', snapshotterPath]..addAll(args));
+    }
     return runCommandAndStreamOutput(<String>[snapshotterPath]..addAll(args));
   }
 }
@@ -162,7 +171,7 @@ class Snapshotter {
     @required String depfilePath,
     @required String packagesPath
   }) async {
-    final SnapshotType type = new SnapshotType(null, BuildMode.debug);
+    final SnapshotType snapshotType = new SnapshotType(null, BuildMode.debug);
     final List<String> args = <String>[
       '--snapshot_kind=script',
       '--script_snapshot=$snapshotPath',
@@ -171,36 +180,7 @@ class Snapshotter {
     ];
 
     final String fingerprintPath = '$depfilePath.fingerprint';
-    final int exitCode = await _build(
-      snapshotType: type,
-      outputSnapshotPath: snapshotPath,
-      packagesPath: packagesPath,
-      snapshotArgs: args,
-      depfilePath: depfilePath,
-      mainPath: mainPath,
-      fingerprintPath: fingerprintPath,
-    );
-    if (exitCode != 0)
-      return exitCode;
-    await _writeFingerprint(type, snapshotPath, depfilePath, mainPath, fingerprintPath);
-    return exitCode;
-  }
-
-  /// Builds an architecture-specific ahead-of-time compiled snapshot of the specified script.
-  Future<Null> buildAotSnapshot() async {
-    throw new UnimplementedError('AOT snapshotting not yet implemented');
-  }
-
-  Future<int> _build({
-    @required SnapshotType snapshotType,
-    @required List<String> snapshotArgs,
-    @required String outputSnapshotPath,
-    @required String packagesPath,
-    @required String depfilePath,
-    @required String mainPath,
-    @required String fingerprintPath,
-  }) async {
-    if (!await _isBuildRequired(snapshotType, outputSnapshotPath, depfilePath, mainPath, fingerprintPath)) {
+    if (!await _isBuildRequired(snapshotType, snapshotPath, depfilePath, mainPath, fingerprintPath)) {
       printTrace('Skipping snapshot build. Fingerprints match.');
       return 0;
     }
@@ -210,13 +190,18 @@ class Snapshotter {
         snapshotType: snapshotType,
         packagesPath: packagesPath,
         depfilePath: depfilePath,
-        additionalArgs: snapshotArgs,
+        additionalArgs: args,
     );
+
     if (exitCode != 0)
       return exitCode;
+    await _writeFingerprint(snapshotType, snapshotPath, depfilePath, mainPath, fingerprintPath);
+    return exitCode;
+  }
 
-    _writeFingerprint(snapshotType, outputSnapshotPath, depfilePath, mainPath, fingerprintPath);
-    return 0;
+  /// Builds an architecture-specific ahead-of-time compiled snapshot of the specified script.
+  Future<Null> buildAotSnapshot() async {
+    throw new UnimplementedError('AOT snapshotting not yet implemented');
   }
 
   Future<bool> _isBuildRequired(SnapshotType type, String outputSnapshotPath, String depfilePath, String mainPath, String fingerprintPath) async {

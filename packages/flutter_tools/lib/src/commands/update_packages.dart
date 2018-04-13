@@ -27,7 +27,7 @@ import '../runner/flutter_command.dart';
 /// ```
 const Map<String, String> _kManuallyPinnedDependencies = const <String, String>{
   // Add pinned packages here.
-  'mockito': '3.0.0-alpha+2', // TODO(aam): https://github.com/dart-lang/mockito/issues/110
+  'mockito': '3.0.0-alpha+3', // TODO(aam): https://github.com/dart-lang/mockito/issues/110
 };
 
 class UpdatePackagesCommand extends FlutterCommand {
@@ -784,7 +784,7 @@ class PubspecChecksum extends PubspecLine {
     if (twoLines.length != 2) {
       return new PubspecChecksum(-1, line);
     }
-    final int value = int.parse(twoLines.last.trim(), radix: 16, onError: (String _) => -1);
+    final int value = int.tryParse(twoLines.last.trim(), radix: 16) ?? -1;
     return new PubspecChecksum(value, line);
   } 
 }

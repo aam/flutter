@@ -15,6 +15,13 @@ import 'globals.dart';
 
 typedef void CompilerMessageConsumer(String message);
 
+class CompilerOutput {
+  String outputFilename;
+  int errorCount;
+
+  CompilerOutput(this.outputFilename, this.errorCount);
+}
+
 class _StdoutHandler {
   _StdoutHandler({this.consumer: printError}) {
     reset();
@@ -22,17 +29,24 @@ class _StdoutHandler {
 
   final CompilerMessageConsumer consumer;
   String boundaryKey;
-  Completer<String> outputFilename;
+  Completer<CompilerOutput> compilerOutput;
 
   void handler(String string) {
     const String kResultPrefix = 'result ';
     if (boundaryKey == null) {
       if (string.startsWith(kResultPrefix))
         boundaryKey = string.substring(kResultPrefix.length);
-    } else if (string.startsWith(boundaryKey))
-      outputFilename.complete(string.length > boundaryKey.length
-        ? string.substring(boundaryKey.length + 1)
-        : null);
+    } else if (string.startsWith(boundaryKey)) {
+      if (string.length <= boundaryKey.length) {
+        compilerOutput.complete(null);
+        return;
+      }
+      final int spaceDelimiter = string.lastIndexOf(' ');
+      compilerOutput.complete(
+        new CompilerOutput(
+          string.substring(boundaryKey.length + 1, spaceDelimiter),
+          int.parse(string.substring(spaceDelimiter + 1).trim())));
+    }
     else
       consumer('compiler message: $string');
   }
@@ -41,13 +55,17 @@ class _StdoutHandler {
   // with its own boundary key and new completer.
   void reset() {
     boundaryKey = null;
-    outputFilename = new Completer<String>();
+    compilerOutput = new Completer<CompilerOutput>();
   }
 }
 
+<<<<<<< HEAD
 // TODO(aam): Since frontend_server and flutter tools run on the same
 // version of dart sdk, there is no need for frontend_server anymore.
 Future<String> compile(
+=======
+Future<CompilerOutput> compile(
+>>>>>>> master
     {String sdkRoot,
     String mainPath,
     String outputFilePath,
@@ -134,7 +152,7 @@ Future<String> compile(
     .transform(const LineSplitter())
     .listen(stdoutHandler.handler);
   final int exitCode = await server.exitCode;
-  return exitCode == 0 ? stdoutHandler.outputFilename.future : null;
+  return exitCode == 0 ? stdoutHandler.compilerOutput.future : null;
 }
 
 /// Wrapper around incremental frontend server compiler, that communicates with
@@ -172,7 +190,7 @@ class ResidentCompiler {
   /// point that is used for recompilation.
   /// Binary file name is returned if compilation was successful, otherwise
   /// null is returned.
-  Future<String> recompile(String mainPath, List<String> invalidatedFiles,
+  Future<CompilerOutput> recompile(String mainPath, List<String> invalidatedFiles,
       {String outputPath, String packagesFilePath}) async {
     stdoutHandler.reset();
 
@@ -188,10 +206,11 @@ class ResidentCompiler {
     }
     _server.stdin.writeln(inputKey);
 
-    return stdoutHandler.outputFilename.future;
+    return stdoutHandler.compilerOutput.future;
   }
 
-  Future<String> _compile(String scriptFilename, String outputPath, String packagesFilePath) async {
+  Future<CompilerOutput> _compile(String scriptFilename, String outputPath,
+      String packagesFilePath) async {
     final String frontendServer = artifacts.getArtifactPath(
       Artifact.frontendServerSnapshotForEngineDartSdk
     );
@@ -233,8 +252,8 @@ class ResidentCompiler {
         onDone: () {
           // when outputFilename future is not completed, but stdout is closed
           // process has died unexpectedly.
-          if (!stdoutHandler.outputFilename.isCompleted) {
-            stdoutHandler.outputFilename.complete(null);
+          if (!stdoutHandler.compilerOutput.isCompleted) {
+            stdoutHandler.compilerOutput.complete(null);
           }
         });
 
@@ -245,7 +264,7 @@ class ResidentCompiler {
 
     _server.stdin.writeln('compile $scriptFilename');
 
-    return stdoutHandler.outputFilename.future;
+    return stdoutHandler.compilerOutput.future;
   }
 
 
