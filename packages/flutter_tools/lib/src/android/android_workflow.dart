@@ -17,7 +17,7 @@ import '../doctor.dart';
 import '../globals.dart';
 import 'android_sdk.dart';
 
-AndroidWorkflow get androidWorkflow => context.putIfAbsent(AndroidWorkflow, () => new AndroidWorkflow());
+AndroidWorkflow get androidWorkflow => context[AndroidWorkflow];
 
 enum LicensesAccepted {
   none,
@@ -42,7 +42,10 @@ class AndroidWorkflow extends DoctorValidator implements Workflow {
   @override
   bool get canLaunchDevices => androidSdk != null && androidSdk.validateSdkWellFormed().isEmpty;
 
-  static const String _kJdkDownload = 'https://www.oracle.com/technetwork/java/javase/downloads/';
+  @override
+  bool get canListEmulators => getEmulatorPath(androidSdk) != null && getAvdPath() != null;
+
+  static const String _jdkDownload = 'https://www.oracle.com/technetwork/java/javase/downloads/';
 
   /// Returns false if we cannot determine the Java version or if the version
   /// is not compatible.
@@ -97,9 +100,9 @@ class AndroidWorkflow extends DoctorValidator implements Workflow {
 
     messages.add(new ValidationMessage('Android SDK at ${androidSdk.directory}'));
 
-    messages.add(new ValidationMessage(androidSdk.ndkDirectory == null
+    messages.add(new ValidationMessage(androidSdk.ndk == null
           ? 'Android NDK location not configured (optional; useful for native profiling support)'
-          : 'Android NDK at ${androidSdk.ndkDirectory}'));
+          : 'Android NDK at ${androidSdk.ndk.directory}'));
 
     String sdkVersionText;
     if (androidSdk.latestVersion != null) {
@@ -135,7 +138,7 @@ class AndroidWorkflow extends DoctorValidator implements Workflow {
       messages.add(new ValidationMessage.error(
           'No Java Development Kit (JDK) found; You must have the environment '
           'variable JAVA_HOME set and the java binary in your PATH. '
-          'You can download the JDK from $_kJdkDownload.'));
+          'You can download the JDK from $_jdkDownload.'));
       return new ValidationResult(ValidationType.partial, messages, statusInfo: sdkVersionText);
     }
     messages.add(new ValidationMessage('Java binary at: $javaBinary'));
@@ -185,10 +188,23 @@ class AndroidWorkflow extends DoctorValidator implements Workflow {
       }
     }
 
-    final Process process = await runCommand(<String>[androidSdk.sdkManagerPath, '--licenses'], environment: androidSdk.sdkManagerEnv);
+    _ensureCanRunSdkManager();
+
+    final Process process = await runCommand(
+      <String>[androidSdk.sdkManagerPath, '--licenses'],
+      environment: androidSdk.sdkManagerEnv,
+    );
     process.stdin.write('n\n');
-    final Future<void> output = process.stdout.transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter()).listen(_onLine).asFuture<void>(null);
-    final Future<void> errors = process.stderr.transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter()).listen(_onLine).asFuture<void>(null);
+    final Future<void> output = process.stdout
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .transform(const LineSplitter())
+        .listen(_onLine)
+        .asFuture<void>(null);
+    final Future<void> errors = process.stderr
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .transform(const LineSplitter())
+        .listen(_onLine)
+        .asFuture<void>(null);
     try {
       await Future.wait<void>(<Future<void>>[output, errors]).timeout(const Duration(seconds: 30));
     } catch (TimeoutException) {
@@ -205,12 +221,7 @@ class AndroidWorkflow extends DoctorValidator implements Workflow {
       return false;
     }
 
-    if (!processManager.canRun(androidSdk.sdkManagerPath))
-      throwToolExit(
-        'Android sdkmanager tool not found.\n'
-        'Try re-installing or updating your Android SDK,\n'
-        'visit https://flutter.io/setup/#android-setup for detailed instructions.'
-      );
+    _ensureCanRunSdkManager();
 
     final Version sdkManagerVersion = new Version.parse(androidSdk.sdkManagerVersion);
     if (sdkManagerVersion == null || sdkManagerVersion.major < 26)
@@ -225,13 +236,24 @@ class AndroidWorkflow extends DoctorValidator implements Workflow {
       environment: androidSdk.sdkManagerEnv,
     );
 
-    waitGroup<Null>(<Future<Null>>[
+    process.stdin.addStream(stdin);
+    await waitGroup<Null>(<Future<Null>>[
       stdout.addStream(process.stdout),
       stderr.addStream(process.stderr),
-      process.stdin.addStream(stdin),
     ]);
 
     final int exitCode = await process.exitCode;
     return exitCode == 0;
+  }
+
+  static void _ensureCanRunSdkManager() {
+    assert(androidSdk != null);
+    final String sdkManagerPath = androidSdk.sdkManagerPath;
+    if (!processManager.canRun(sdkManagerPath))
+      throwToolExit(
+        'Android sdkmanager tool not found ($sdkManagerPath).\n'
+        'Try re-installing or updating your Android SDK,\n'
+        'visit https://flutter.io/setup/#android-setup for detailed instructions.'
+      );
   }
 }

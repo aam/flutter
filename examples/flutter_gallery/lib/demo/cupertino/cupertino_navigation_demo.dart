@@ -24,7 +24,7 @@ const List<Color> coolColors = const <Color>[
 const List<String> coolColorNames = const <String>[
   'Sarcoline', 'Coquelicot', 'Smaragdine', 'Mikado', 'Glaucous', 'Wenge',
   'Fulvous', 'Xanadu', 'Falu', 'Eburnean', 'Amaranth', 'Australien',
-  'Banan', 'Falu', 'Gingerline', 'Incarnadine', 'Labrabor', 'Nattier',
+  'Banan', 'Falu', 'Gingerline', 'Incarnadine', 'Labrador', 'Nattier',
   'Pervenche', 'Sinoper', 'Verditer', 'Watchet', 'Zaffre',
 ];
 
@@ -173,7 +173,7 @@ class Tab1RowItem extends StatelessWidget {
     final Widget row = new GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        Navigator.of(context).push(new CupertinoPageRoute<Null>(
+        Navigator.of(context).push(new CupertinoPageRoute<void>(
           builder: (BuildContext context) => new Tab1ItemPage(
             color: color,
             colorName: colorName,
@@ -453,7 +453,7 @@ class Tab2Header extends StatelessWidget {
                         'SUPPORT TICKET',
                         style: const TextStyle(
                           color: const Color(0xFF646464),
-                          letterSpacing: -0.8,
+                          letterSpacing: -0.9,
                           fontSize: 14.0,
                           fontWeight: FontWeight.w500,
                         ),
@@ -484,8 +484,8 @@ class Tab2Header extends StatelessWidget {
                         'Product or product packaging damaged during transit',
                         style: const TextStyle(
                           fontSize: 16.0,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.6,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.46,
                         ),
                       ),
                       const Padding(padding: const EdgeInsets.only(top: 16.0)),
@@ -577,10 +577,8 @@ class Tab2ConversationBubble extends StatelessWidget {
               ? CupertinoColors.white
               : CupertinoColors.black,
           letterSpacing: -0.4,
-          fontSize: 14.0,
-          fontWeight: color == Tab2ConversationBubbleColor.blue
-              ? FontWeight.w300
-              : FontWeight.w400,
+          fontSize: 15.0,
+          fontWeight: FontWeight.w400,
         ),
       ),
     );
@@ -678,7 +676,7 @@ List<Widget> buildTab2Conversation() {
         text: 'SJ',
         color: const Color(0xFF34CAD6),
       ),
-      text: "We'll send you our\nnewest Labrabor too!",
+      text: "We'll send you our\nnewest Labrador too!",
     ),
     const Tab2ConversationRow(
       text: 'Yay',
@@ -778,7 +776,7 @@ class Tab3Dialog extends StatelessWidget {
               color: CupertinoColors.activeBlue,
               child: const Text('Sign in'),
               onPressed: () {
-                Navigator.of(context).pop();
+                Navigator.pop(context);
               },
             ),
           ],

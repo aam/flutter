@@ -4,17 +4,20 @@
 
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+import 'package:meta/meta.dart';
 import 'package:test/test.dart' as test_package;
 
 import 'all_elements.dart';
 import 'binding.dart';
 import 'controller.dart';
 import 'finders.dart';
+import 'matchers.dart';
 import 'test_async_utils.dart';
 import 'test_text_input.dart';
 
@@ -46,6 +49,7 @@ typedef Future<Null> WidgetTesterCallback(WidgetTester widgetTester);
 ///       expect(find.text('Success'), findsOneWidget);
 ///     });
 /// ```
+@isTest
 void testWidgets(String description, WidgetTesterCallback callback, {
   bool skip: false,
   test_package.Timeout timeout
@@ -133,6 +137,10 @@ Future<Null> benchmarkWidgets(WidgetTesterCallback callback) {
 /// See [test_package.expect] for details. This is a variant of that function
 /// that additionally verifies that there are no asynchronous APIs
 /// that have not yet resolved.
+///
+/// See also:
+///
+///  * [expectLater] for use with asynchronous matchers.
 void expect(dynamic actual, dynamic matcher, {
   String reason,
   dynamic skip, // true or a String
@@ -154,6 +162,25 @@ void expectSync(dynamic actual, dynamic matcher, {
   String reason,
 }) {
   test_package.expect(actual, matcher, reason: reason);
+}
+
+/// Just like [expect], but returns a [Future] that completes when the matcher
+/// has finished matching.
+///
+/// See [test_package.expectLater] for details.
+///
+/// If the matcher fails asynchronously, that failure is piped to the returned
+/// future where it can be handled by user code. If it is not handled by user
+/// code, the test will fail.
+Future<void> expectLater(dynamic actual, dynamic matcher, {
+  String reason,
+  dynamic skip, // true or a String
+}) {
+  // We can't wrap the delegate in a guard, or we'll hit async barriers in
+  // [TestWidgetsFlutterBinding] while we're waiting for the matcher to complete
+  TestAsyncUtils.guardSync();
+  return test_package.expectLater(actual, matcher, reason: reason, skip: skip)
+           .then<void>((dynamic value) => null);
 }
 
 /// Class that programmatically interacts with widgets and the test environment.
@@ -243,9 +270,9 @@ class WidgetTester extends WidgetController implements HitTestDispatcher, Ticker
       Duration timeout = const Duration(minutes: 10),
     ]) {
     assert(duration != null);
-    assert(duration > Duration.ZERO);
+    assert(duration > Duration.zero);
     assert(timeout != null);
-    assert(timeout > Duration.ZERO);
+    assert(timeout > Duration.zero);
     assert(() {
       final WidgetsBinding binding = this.binding;
       if (binding is LiveTestWidgetsFlutterBinding &&
@@ -268,6 +295,28 @@ class WidgetTester extends WidgetController implements HitTestDispatcher, Ticker
       } while (binding.hasScheduledFrame);
     }).then<int>((Null _) => count);
   }
+
+  /// Runs a [callback] that performs real asynchronous work.
+  ///
+  /// This is intended for callers who need to call asynchronous methods where
+  /// the methods spawn isolates or OS threads and thus cannot be executed
+  /// synchronously by calling [pump].
+  ///
+  /// If callers were to run these types of asynchronous tasks directly in
+  /// their test methods, they run the possibility of encountering deadlocks.
+  ///
+  /// If [callback] completes successfully, this will return the future
+  /// returned by [callback].
+  ///
+  /// If [callback] completes with an error, the error will be caught by the
+  /// Flutter framework and made available via [takeException], and this method
+  /// will return a future that completes will `null`.
+  ///
+  /// Re-entrant calls to this method are not allowed; callers of this method
+  /// are required to wait for the returned future to complete before calling
+  /// this method again. Attempts to do otherwise will result in a
+  /// [TestFailure] error being thrown.
+  Future<T> runAsync<T>(Future<T> callback()) => binding.runAsync(callback);
 
   /// Whether there are any any transient callbacks scheduled.
   ///
@@ -471,6 +520,19 @@ class WidgetTester extends WidgetController implements HitTestDispatcher, Ticker
 
   void _endOfTestVerifications() {
     verifyTickersWereDisposed('at the end of the test');
+    _verifySemanticsHandlesWereDisposed();
+  }
+
+  void _verifySemanticsHandlesWereDisposed() {
+    if (binding.pipelineOwner.semanticsOwner != null) {
+      throw new FlutterError(
+        'A SemanticsHandle was active at the end of the test.\n'
+        'All SemanticsHandle instances must be disposed by calling dispose() on '
+        'the SemanticsHandle. If your test uses SemanticsTester, it is '
+        'sufficient to call dispose() on SemanticsTester. Otherwise, the '
+        'existing handle will leak into another test and alter its behavior.'
+      );
+    }
   }
 
   /// Returns the TestTextInput singleton.
@@ -517,6 +579,21 @@ class WidgetTester extends WidgetController implements HitTestDispatcher, Ticker
       testTextInput.enterText(text);
       await idle();
     });
+  }
+
+  /// Makes an effort to dismiss the current page with a Material [Scaffold] or
+  /// a [CupertinoPageScaffold].
+  ///
+  /// Will throw an error if there is no back button in the page.
+  Future<void> pageBack() async {
+    Finder backButton = find.byTooltip('Back');
+    if (backButton.evaluate().isEmpty) {
+      backButton = find.widgetWithIcon(CupertinoButton, CupertinoIcons.back);
+    }
+
+    expect(backButton, findsOneWidget, reason: 'One back button expected on screen');
+
+    await tap(backButton);
   }
 }
 

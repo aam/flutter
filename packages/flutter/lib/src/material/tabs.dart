@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:ui' show lerpDouble;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -121,10 +120,10 @@ class Tab extends StatelessWidget {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new StringProperty('text', text, defaultValue: null));
-    description.add(new DiagnosticsProperty<Widget>('icon', icon, defaultValue: null));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new StringProperty('text', text, defaultValue: null));
+    properties.add(new DiagnosticsProperty<Widget>('icon', icon, defaultValue: null));
   }
 }
 
@@ -152,12 +151,12 @@ class _TabStyle extends AnimatedWidget {
     final ThemeData themeData = Theme.of(context);
     final TextStyle defaultStyle = labelStyle ?? themeData.primaryTextTheme.body2;
     final TextStyle defaultUnselectedStyle = unselectedLabelStyle ?? labelStyle ?? themeData.primaryTextTheme.body2;
+    final Animation<double> animation = listenable;
     final TextStyle textStyle = selected
-      ? defaultStyle
-      : defaultUnselectedStyle;
+      ? TextStyle.lerp(defaultStyle, defaultUnselectedStyle, animation.value)
+      : TextStyle.lerp(defaultUnselectedStyle, defaultStyle, animation.value);
     final Color selectedColor = labelColor ?? themeData.primaryTextTheme.body2.color;
     final Color unselectedColor = unselectedLabelColor ?? selectedColor.withAlpha(0xB2); // 70% alpha
-    final Animation<double> animation = listenable;
     final Color color = selected
       ? Color.lerp(selectedColor, unselectedColor, animation.value)
       : Color.lerp(unselectedColor, selectedColor, animation.value);
@@ -499,9 +498,9 @@ class _TabBarScrollController extends ScrollController {
 /// Typically created as the [AppBar.bottom] part of an [AppBar] and in
 /// conjunction with a [TabBarView].
 ///
-/// If a [TabController] is not provided, then there must be a
-/// [DefaultTabController] ancestor. The tab controller's [TabController.length]
-/// must equal the length of the [tabs] list.
+/// If a [TabController] is not provided, then a [DefaultTabController] ancestor
+/// must be provided instead. The tab controller's [TabController.length] must
+/// equal the length of the [tabs] list.
 ///
 /// Requires one of its ancestors to be a [Material] widget.
 ///
@@ -691,7 +690,7 @@ class _TabBarState extends State<TabBar> {
     // When that happens, automatic transitions of the theme will likely look
     // ugly as the indicator color suddenly snaps to white at one end, but it's
     // not clear how to avoid that any further.
-    if (color == Material.of(context).color)
+    if (color.value == Material.of(context).color.value)
       color = Colors.white;
 
     return new UnderlineTabIndicator(
@@ -920,13 +919,13 @@ class _TabBarState extends State<TabBar> {
         wrappedTabs[tabIndex] = _buildStyledTab(wrappedTabs[tabIndex], true, centerAnimation);
         if (_currentIndex > 0) {
           final int tabIndex = _currentIndex - 1;
-          final Animation<double> previousAnimation = new _DragAnimation(_controller, tabIndex);
-          wrappedTabs[tabIndex] = _buildStyledTab(wrappedTabs[tabIndex], true, previousAnimation);
+          final Animation<double> previousAnimation = new ReverseAnimation(new _DragAnimation(_controller, tabIndex));
+          wrappedTabs[tabIndex] = _buildStyledTab(wrappedTabs[tabIndex], false, previousAnimation);
         }
         if (_currentIndex < widget.tabs.length - 1) {
           final int tabIndex = _currentIndex + 1;
-          final Animation<double> nextAnimation = new _DragAnimation(_controller, tabIndex);
-          wrappedTabs[tabIndex] = _buildStyledTab(wrappedTabs[tabIndex], true, nextAnimation);
+          final Animation<double> nextAnimation = new ReverseAnimation(new _DragAnimation(_controller, tabIndex));
+          wrappedTabs[tabIndex] = _buildStyledTab(wrappedTabs[tabIndex], false, nextAnimation);
         }
       }
     }

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 enum GridDemoTileStyle {
@@ -165,7 +164,7 @@ class GridDemoPhotoItem extends StatelessWidget {
   final BannerTapCallback onBannerTap; // User taps on the photo's header or footer.
 
   void showPhoto(BuildContext context) {
-    Navigator.push(context, new MaterialPageRoute<Null>(
+    Navigator.push(context, new MaterialPageRoute<void>(
       builder: (BuildContext context) {
         return new Scaffold(
           appBar: new AppBar(

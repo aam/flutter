@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:file/file.dart';
+import 'package:file/memory.dart';
+import 'package:flutter_tools/src/base/file_system.dart';
 import 'package:flutter_tools/src/cache.dart';
 import 'package:flutter_tools/src/flutter_manifest.dart';
-
 import 'package:test/test.dart';
 
 import 'src/common.dart';
@@ -203,7 +205,7 @@ flutter:
 ''';
       final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
 
-      final String expectedFontsDescriptor = '[{fonts: [{asset: a/bar}, {style: italic, weight: 400, asset: a/bar}], family: foo},'
+      const String expectedFontsDescriptor = '[{fonts: [{asset: a/bar}, {style: italic, weight: 400, asset: a/bar}], family: foo},'
                                              ' {fonts: [{asset: a/baz}, {style: italic, weight: 400, asset: a/baz}], family: bar}]';
       expect(flutterManifest.fontsDescriptor.toString(), expectedFontsDescriptor);
       final List<Font> fonts = flutterManifest.fonts;
@@ -240,7 +242,7 @@ flutter:
       expect(barFontAsset1.style, 'italic');
     });
 
-    testUsingContext('has only one of two font familes when one declaration is missing the "family" option', () async {
+    testUsingContext('has only one of two font families when one declaration is missing the "family" option', () async {
       const String manifest = '''
 name: test
 dependencies:
@@ -264,7 +266,7 @@ flutter:
       final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
 
 
-      final String expectedFontsDescriptor = '[{fonts: [{asset: a/bar}, {style: italic, weight: 400, asset: a/bar}], family: foo},'
+      const String expectedFontsDescriptor = '[{fonts: [{asset: a/bar}, {style: italic, weight: 400, asset: a/bar}], family: foo},'
                                              ' {fonts: [{asset: a/baz}, {style: italic, weight: 400, asset: a/baz}]}]';
       expect(flutterManifest.fontsDescriptor.toString(), expectedFontsDescriptor);
       final List<Font> fonts = flutterManifest.fonts;
@@ -285,7 +287,7 @@ flutter:
       expect(fooFontAsset1.style, 'italic');
     });
 
-    testUsingContext('has only one of two font familes when one declaration is missing the "fonts" option', () async {
+    testUsingContext('has only one of two font families when one declaration is missing the "fonts" option', () async {
       const String manifest = '''
 name: test
 dependencies:
@@ -304,7 +306,7 @@ flutter:
 ''';
       final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
 
-      final String expectedFontsDescriptor = '[{fonts: [{asset: a/bar}, {style: italic, weight: 400, asset: a/bar}], family: foo},'
+      const String expectedFontsDescriptor = '[{fonts: [{asset: a/bar}, {style: italic, weight: 400, asset: a/bar}], family: foo},'
                                              ' {family: bar}]';
       expect(flutterManifest.fontsDescriptor.toString(), expectedFontsDescriptor);
       final List<Font> fonts = flutterManifest.fonts;
@@ -345,5 +347,77 @@ flutter:
       final List<Font> fonts = flutterManifest.fonts;
       expect(fonts.length, 0);
     });
+
+    test('allows a blank flutter section', () async {
+      const String manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+      final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
+      expect(flutterManifest.isEmpty, false);
+    });
   });
+
+  group('FlutterManifest with MemoryFileSystem', () {
+    void assertSchemaIsReadable() async {
+      const String manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+
+      final FlutterManifest flutterManifest = await FlutterManifest
+          .createFromString(manifest);
+      expect(flutterManifest.isEmpty, false);
+    }
+
+    void writeSchemaFile(FileSystem filesystem, String schemaData) {
+      final String schemaPath = buildSchemaPath(filesystem);
+      final File schemaFile = filesystem.file(schemaPath);
+
+      final String schemaDir = buildSchemaDir(filesystem);
+
+      filesystem.directory(schemaDir).createSync(recursive: true);
+      filesystem.file(schemaFile).writeAsStringSync(schemaData);
+    }
+
+    void testUsingContextAndFs(String description, FileSystem filesystem,
+        dynamic testMethod()) {
+      const String schemaData = '{}';
+
+      testUsingContext(description,
+              () async {
+            writeSchemaFile( filesystem, schemaData);
+            testMethod();
+      },
+          overrides: <Type, Generator>{
+            FileSystem: () => filesystem,
+          }
+      );
+    }
+
+    testUsingContext('Validate manifest on original fs', () async {
+      assertSchemaIsReadable();
+    });
+
+    testUsingContextAndFs('Validate manifest on Posix FS',
+        new MemoryFileSystem(style: FileSystemStyle.posix), () async {
+          assertSchemaIsReadable();
+        }
+    );
+
+    testUsingContextAndFs('Validate manifest on Windows FS',
+        new MemoryFileSystem(style: FileSystemStyle.windows), () async {
+          assertSchemaIsReadable();
+        }
+    );
+
+  });
+
 }
+

@@ -258,15 +258,15 @@ class Material extends StatefulWidget {
   _MaterialState createState() => new _MaterialState();
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new EnumProperty<MaterialType>('type', type));
-    description.add(new DoubleProperty('elevation', elevation, defaultValue: 0.0));
-    description.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
-    description.add(new DiagnosticsProperty<Color>('shadowColor', shadowColor, defaultValue: const Color(0xFF000000)));
-    textStyle?.debugFillProperties(description, prefix: 'textStyle.');
-    description.add(new DiagnosticsProperty<ShapeBorder>('shape', shape, defaultValue: null));
-    description.add(new EnumProperty<BorderRadius>('borderRadius', borderRadius, defaultValue: null));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new EnumProperty<MaterialType>('type', type));
+    properties.add(new DoubleProperty('elevation', elevation, defaultValue: 0.0));
+    properties.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
+    properties.add(new DiagnosticsProperty<Color>('shadowColor', shadowColor, defaultValue: const Color(0xFF000000)));
+    textStyle?.debugFillProperties(properties, prefix: 'textStyle.');
+    properties.add(new DiagnosticsProperty<ShapeBorder>('shape', shape, defaultValue: null));
+    properties.add(new EnumProperty<BorderRadius>('borderRadius', borderRadius, defaultValue: null));
   }
 
   /// The default radius of an ink splash in logical pixels.
@@ -315,13 +315,13 @@ class _MaterialState extends State<Material> with TickerProviderStateMixin {
       )
     );
 
-    // PhysicalModel has a temporary workaround for a perfomance issue that
+    // PhysicalModel has a temporary workaround for a performance issue that
     // speeds up rectangular non transparent material (the workaround is to
     // skip the call to ui.Canvas.saveLayer if the border radius is 0).
-    // Until the saveLayer perfomance issue is resolved, we're keeping this
+    // Until the saveLayer performance issue is resolved, we're keeping this
     // special case here for canvas material type that is using the default
     // shape (rectangle). We could go down this fast path for explicitly
-    // specified rectangles (e.g shape RoundeRectangleBorder with radius 0, but
+    // specified rectangles (e.g shape RoundedRectangleBorder with radius 0, but
     // we choose not to as we want the change from the fast-path to the
     // slow-path to be noticeable in the construction site of Material.
     if (widget.type == MaterialType.canvas && widget.shape == null && widget.borderRadius == null) {

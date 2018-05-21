@@ -14,6 +14,14 @@ import 'focus_manager.dart';
 
 export 'dart:ui' show hashValues, hashList;
 
+export 'package:flutter/foundation.dart' show
+  immutable,
+  mustCallSuper,
+  optionalTypeArgs,
+  protected,
+  required,
+  visibleForTesting;
+
 export 'package:flutter/foundation.dart' show FlutterError, debugPrint, debugPrintStack;
 export 'package:flutter/foundation.dart' show VoidCallback, ValueChanged, ValueGetter, ValueSetter;
 export 'package:flutter/foundation.dart' show DiagnosticLevel;
@@ -413,9 +421,9 @@ abstract class Widget extends DiagnosticableTree {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.defaultDiagnosticsTreeStyle = DiagnosticsTreeStyle.dense;
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.defaultDiagnosticsTreeStyle = DiagnosticsTreeStyle.dense;
   }
 
 
@@ -1103,6 +1111,15 @@ abstract class State<T extends StatefulWidget> extends Diagnosticable {
           'consider breaking the reference to this object during dispose().'
         );
       }
+      if (_debugLifecycleState == _StateLifecycle.created && !mounted) {
+        throw new FlutterError(
+          'setState() called in constructor: $this\n'
+          'This happens when you call setState() on a State object for a widget that '
+          'hasn\'t been inserted into the widget tree yet. It is not necessary to call '
+          'setState() in the constructor, since the state is already assumed to be dirty '
+          'when it is initially created.'
+        );
+      }
       return true;
     }());
     final dynamic result = fn() as dynamic;
@@ -1300,14 +1317,14 @@ abstract class State<T extends StatefulWidget> extends Diagnosticable {
   void didChangeDependencies() { }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
     assert(() {
-      description.add(new EnumProperty<_StateLifecycle>('lifecycle state', _debugLifecycleState, defaultValue: _StateLifecycle.ready));
+      properties.add(new EnumProperty<_StateLifecycle>('lifecycle state', _debugLifecycleState, defaultValue: _StateLifecycle.ready));
       return true;
     }());
-    description.add(new ObjectFlagProperty<T>('_widget', _widget, ifNull: 'no widget'));
-    description.add(new ObjectFlagProperty<StatefulElement>('_element', _element, ifNull: 'not mounted'));
+    properties.add(new ObjectFlagProperty<T>('_widget', _widget, ifNull: 'no widget'));
+    properties.add(new ObjectFlagProperty<StatefulElement>('_element', _element, ifNull: 'not mounted'));
   }
 }
 
@@ -3102,7 +3119,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
         throw new FlutterError(
           'Cannot get size without a render object.\n'
           'In order for an element to have a valid size, the element must have '
-          'an assoicated render object. This element does not have an associated '
+          'an associated render object. This element does not have an associated '
           'render object, which typically means that the size getter was called '
           'too early in the pipeline (e.g., during the build phase) before the '
           'framework has created the render tree.\n'
@@ -3349,16 +3366,16 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.defaultDiagnosticsTreeStyle= DiagnosticsTreeStyle.dense;
-    description.add(new ObjectFlagProperty<int>('depth', depth, ifNull: 'no depth'));
-    description.add(new ObjectFlagProperty<Widget>('widget', widget, ifNull: 'no widget'));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.defaultDiagnosticsTreeStyle= DiagnosticsTreeStyle.dense;
+    properties.add(new ObjectFlagProperty<int>('depth', depth, ifNull: 'no depth'));
+    properties.add(new ObjectFlagProperty<Widget>('widget', widget, ifNull: 'no widget'));
     if (widget != null) {
-      description.add(new DiagnosticsProperty<Key>('key', widget?.key, showName: false, defaultValue: null, level: DiagnosticLevel.hidden));
-      widget.debugFillProperties(description);
+      properties.add(new DiagnosticsProperty<Key>('key', widget?.key, showName: false, defaultValue: null, level: DiagnosticLevel.hidden));
+      widget.debugFillProperties(properties);
     }
-    description.add(new FlagProperty('dirty', value: dirty, ifTrue: 'dirty'));
+    properties.add(new FlagProperty('dirty', value: dirty, ifTrue: 'dirty'));
   }
 
   @override
@@ -3554,9 +3571,9 @@ class ErrorWidget extends LeafRenderObjectWidget {
   RenderBox createRenderObject(BuildContext context) => new RenderErrorBox(message);
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new StringProperty('message', message, quoted: false));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new StringProperty('message', message, quoted: false));
   }
 }
 
@@ -3863,9 +3880,9 @@ class StatefulElement extends ComponentElement {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<State<StatefulWidget>>('state', state, defaultValue: null));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<State<StatefulWidget>>('state', state, defaultValue: null));
   }
 }
 
@@ -3909,7 +3926,7 @@ class ParentDataElement<T extends RenderObjectWidget> extends ProxyElement {
   ParentDataWidget<T> get widget => super.widget;
 
   @override
-  void mount(Element parent, dynamic slot) {
+  void mount(Element parent, dynamic newSlot) {
     assert(() {
       final List<Widget> badAncestors = <Widget>[];
       Element ancestor = parent;
@@ -3935,7 +3952,7 @@ class ParentDataElement<T extends RenderObjectWidget> extends ProxyElement {
         )
       );
     }());
-    super.mount(parent, slot);
+    super.mount(parent, newSlot);
   }
 
   void _applyParentData(ParentDataWidget<T> widget) {
@@ -4462,13 +4479,17 @@ abstract class RenderObjectElement extends Element {
   @override
   void deactivate() {
     super.deactivate();
-    assert(!renderObject.attached);
+    assert(!renderObject.attached,
+      'A RenderObject was still attached when attempting to deactivate its '
+      'RenderObjectElement: $renderObject');
   }
 
   @override
   void unmount() {
     super.unmount();
-    assert(!renderObject.attached);
+    assert(!renderObject.attached,
+      'A RenderObject was still attached when attempting to unmount its '
+      'RenderObjectElement: $renderObject');
     widget.didUnmountRenderObject(renderObject);
   }
 
@@ -4531,9 +4552,9 @@ abstract class RenderObjectElement extends Element {
   void removeChildRenderObject(covariant RenderObject child);
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<RenderObject>('renderObject', renderObject, defaultValue: null));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<RenderObject>('renderObject', renderObject, defaultValue: null));
   }
 }
 

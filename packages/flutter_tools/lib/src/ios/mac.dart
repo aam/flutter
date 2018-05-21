@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import 'dart:async';
-import 'dart:convert' show JSON;
+import 'dart:convert' show json;
 
 import 'package:meta/meta.dart';
 
@@ -11,6 +11,7 @@ import '../application_package.dart';
 import '../base/common.dart';
 import '../base/context.dart';
 import '../base/file_system.dart';
+import '../base/fingerprint.dart';
 import '../base/io.dart';
 import '../base/logger.dart';
 import '../base/os.dart';
@@ -19,7 +20,6 @@ import '../base/process.dart';
 import '../base/process_manager.dart';
 import '../base/utils.dart';
 import '../build_info.dart';
-import '../flx.dart' as flx;
 import '../globals.dart';
 import '../plugins.dart';
 import '../services.dart';
@@ -35,9 +35,9 @@ const int kXcodeRequiredVersionMinor = 0;
 // Homebrew.
 const PythonModule kPythonSix = const PythonModule('six');
 
-IMobileDevice get iMobileDevice => context.putIfAbsent(IMobileDevice, () => const IMobileDevice());
+IMobileDevice get iMobileDevice => context[IMobileDevice];
 
-Xcode get xcode => context.putIfAbsent(Xcode, () => new Xcode());
+Xcode get xcode => context[Xcode];
 
 class PythonModule {
   const PythonModule(this.name);
@@ -104,7 +104,7 @@ class IMobileDevice {
 }
 
 class Xcode {
-  bool get isInstalledAndMeetsVersionCheck => isInstalled && xcodeVersionSatisfactory;
+  bool get isInstalledAndMeetsVersionCheck => isInstalled && isVersionSatisfactory;
 
   String _xcodeSelectPath;
   String get xcodeSelectPath {
@@ -121,10 +121,14 @@ class Xcode {
   bool get isInstalled {
     if (xcodeSelectPath == null || xcodeSelectPath.isEmpty)
       return false;
-    if (xcodeVersionText == null || !xcodeVersionRegex.hasMatch(xcodeVersionText))
-      return false;
-    return true;
+    return xcodeProjectInterpreter.isInstalled;
   }
+
+  int get majorVersion => xcodeProjectInterpreter.majorVersion;
+
+  int get minorVersion => xcodeProjectInterpreter.minorVersion;
+
+  String get versionText => xcodeProjectInterpreter.versionText;
 
   bool _eulaSigned;
   /// Has the EULA been signed?
@@ -145,70 +149,51 @@ class Xcode {
     return _eulaSigned;
   }
 
-  final RegExp xcodeVersionRegex = new RegExp(r'Xcode ([0-9.]+)');
-  void _updateXcodeVersion() {
-    try {
-      _xcodeVersionText = processManager.runSync(<String>['/usr/bin/xcodebuild', '-version']).stdout.trim().replaceAll('\n', ', ');
-      final Match match = xcodeVersionRegex.firstMatch(xcodeVersionText);
-      if (match == null)
-        return;
+  bool _isSimctlInstalled;
 
-      final String version = match.group(1);
-      final List<String> components = version.split('.');
-      _xcodeMajorVersion = int.parse(components[0]);
-      _xcodeMinorVersion = components.length == 1 ? 0 : int.parse(components[1]);
-    } on ProcessException {
-      // Ignore: leave values null.
+  /// Verifies that simctl is installed by trying to run it.
+  bool get isSimctlInstalled {
+    if (_isSimctlInstalled == null) {
+      try {
+        // This command will error if additional components need to be installed in
+        // xcode 9.2 and above.
+        final ProcessResult result = processManager.runSync(<String>['/usr/bin/xcrun', 'simctl', 'list']);
+        _isSimctlInstalled = result.stderr == null || result.stderr == '';
+      } on ProcessException {
+        _isSimctlInstalled = false;
+      }
     }
+    return _isSimctlInstalled;
   }
 
-  String _xcodeVersionText;
-  String get xcodeVersionText {
-    if (_xcodeVersionText == null)
-      _updateXcodeVersion();
-    return _xcodeVersionText;
-  }
-
-  int _xcodeMajorVersion;
-  int get xcodeMajorVersion {
-    if (_xcodeMajorVersion == null)
-      _updateXcodeVersion();
-    return _xcodeMajorVersion;
-  }
-
-  int _xcodeMinorVersion;
-  int get xcodeMinorVersion {
-    if (_xcodeMinorVersion == null)
-      _updateXcodeVersion();
-    return _xcodeMinorVersion;
-  }
-
-  bool get xcodeVersionSatisfactory {
-    if (xcodeVersionText == null || !xcodeVersionRegex.hasMatch(xcodeVersionText))
+  bool get isVersionSatisfactory {
+    if (!xcodeProjectInterpreter.isInstalled)
       return false;
-    return _xcodeVersionCheckValid(xcodeMajorVersion, xcodeMinorVersion);
+    if (majorVersion > kXcodeRequiredVersionMajor)
+      return true;
+    if (majorVersion == kXcodeRequiredVersionMajor)
+      return minorVersion >= kXcodeRequiredVersionMinor;
+    return false;
   }
-}
 
-bool _xcodeVersionCheckValid(int major, int minor) {
-  if (major > kXcodeRequiredVersionMajor)
-    return true;
+  Future<RunResult> cc(List<String> args) {
+    return runCheckedAsync(<String>['xcrun', 'cc']..addAll(args));
+  }
 
-  if (major == kXcodeRequiredVersionMajor)
-    return minor >= kXcodeRequiredVersionMinor;
-
-  return false;
+  Future<RunResult> clang(List<String> args) {
+    return runCheckedAsync(<String>['xcrun', 'clang']..addAll(args));
+  }
 }
 
 Future<XcodeBuildResult> buildXcodeProject({
   BuildableIOSApp app,
   BuildInfo buildInfo,
-  String target: flx.defaultMainPath,
+  String targetOverride,
   bool buildForDevice,
   bool codesign: true,
   bool usesTerminalUi: true,
 }) async {
-  if (!await upgradePbxProjWithFlutterAssets(app.name))
+  if (!await upgradePbxProjWithFlutterAssets(app.name, app.appDirectory))
     return new XcodeBuildResult(success: false);
 
   if (!_checkXcodeVersion())
@@ -248,57 +233,97 @@ Future<XcodeBuildResult> buildXcodeProject({
     return new XcodeBuildResult(success: false);
   }
 
-  String developmentTeam;
+  Map<String, String> autoSigningConfigs;
   if (codesign && buildForDevice)
-    developmentTeam = await getCodeSigningIdentityDevelopmentTeam(iosApp: app, usesTerminalUi: usesTerminalUi);
+    autoSigningConfigs = await getCodeSigningIdentityDevelopmentTeam(iosApp: app, usesTerminalUi: usesTerminalUi);
 
   // Before the build, all service definitions must be updated and the dylibs
   // copied over to a location that is suitable for Xcodebuild to find them.
   final Directory appDirectory = fs.directory(app.appDirectory);
   await _addServicesToBundle(appDirectory);
-  final String previousGeneratedXcconfig = readGeneratedXcconfig(app.appDirectory);
 
   updateGeneratedXcodeProperties(
     projectPath: fs.currentDirectory.path,
     buildInfo: buildInfo,
-    target: target,
+    targetOverride: targetOverride,
     previewDart2: buildInfo.previewDart2,
   );
 
   if (hasPlugins()) {
-    final String currentGeneratedXcconfig = readGeneratedXcconfig(app.appDirectory);
-    await cocoaPods.processPods(
+    final String iosPath = fs.path.join(fs.currentDirectory.path, app.appDirectory);
+    // If the Xcode project, Podfile, or Generated.xcconfig have changed since
+    // last run, pods should be updated.
+    final Fingerprinter fingerprinter = new Fingerprinter(
+      fingerprintPath: fs.path.join(getIosBuildDirectory(), 'pod_inputs.fingerprint'),
+      paths: <String>[
+        _getPbxProjPath(app.appDirectory),
+        fs.path.join(iosPath, 'Podfile'),
+        fs.path.join(iosPath, 'Flutter', 'Generated.xcconfig'),
+      ],
+      properties: <String, String>{},
+    );
+    final bool didPodInstall = await cocoaPods.processPods(
       appIosDirectory: appDirectory,
       iosEngineDir: flutterFrameworkDir(buildInfo.mode),
       isSwift: app.isSwift,
-      flutterPodChanged: (previousGeneratedXcconfig != currentGeneratedXcconfig),
+      dependenciesChanged: !await fingerprinter.doesFingerprintMatch()
     );
+    if (didPodInstall)
+      await fingerprinter.writeFingerprint();
   }
 
-  final Status cleanStatus =
-      logger.startProgress('Running Xcode clean...', expectSlowOperation: true);
-  final RunResult cleanResult = await runAsync(
-    <String>[
-      '/usr/bin/env',
-      'xcrun',
-      'xcodebuild',
-      'clean',
-      '-configuration', configuration,
-    ],
-    workingDirectory: app.appDirectory,
-  );
-  cleanStatus.stop();
-  if (cleanResult.exitCode != 0) {
-    throwToolExit('Xcode failed to clean\n${cleanResult.stderr}');
+  // If buildNumber is not specified, keep the project untouched.
+  if (buildInfo.buildNumber != null) {
+    final Status buildNumberStatus =
+        logger.startProgress('Setting CFBundleVersion...', expectSlowOperation: true);
+    try {
+      final RunResult buildNumberResult = await runAsync(
+        <String>[
+          '/usr/bin/env',
+          'xcrun',
+          'agvtool',
+          'new-version',
+          '-all',
+          buildInfo.buildNumber.toString(),
+        ],
+        workingDirectory: app.appDirectory,
+      );
+      if (buildNumberResult.exitCode != 0) {
+        throwToolExit('Xcode failed to set new version\n${buildNumberResult.stderr}');
+      }
+    } finally {
+      buildNumberStatus.stop();
+    }
+  }
+
+  // If buildName is not specified, keep the project untouched.
+  if (buildInfo.buildName != null) {
+    final Status buildNameStatus =
+        logger.startProgress('Setting CFBundleShortVersionString...', expectSlowOperation: true);
+    try {
+      final RunResult buildNameResult = await runAsync(
+        <String>[
+          '/usr/bin/env',
+          'xcrun',
+          'agvtool',
+          'new-marketing-version',
+          buildInfo.buildName,
+        ],
+        workingDirectory: app.appDirectory,
+      );
+      if (buildNameResult.exitCode != 0) {
+        throwToolExit('Xcode failed to set new marketing version\n${buildNameResult.stderr}');
+      }
+    } finally {
+      buildNameStatus.stop();
+    }
   }
 
   final List<String> buildCommands = <String>[
     '/usr/bin/env',
     'xcrun',
     'xcodebuild',
-    'build',
     '-configuration', configuration,
-    'ONLY_ACTIVE_ARCH=YES',
   ];
 
   if (logger.isVerbose) {
@@ -310,8 +335,10 @@ Future<XcodeBuildResult> buildXcodeProject({
     buildCommands.add('-quiet');
   }
 
-  if (developmentTeam != null) {
-    buildCommands.add('DEVELOPMENT_TEAM=$developmentTeam');
+  if (autoSigningConfigs != null) {
+    for (MapEntry<String, String> signingConfig in autoSigningConfigs.entries) {
+      buildCommands.add('${signingConfig.key}=${signingConfig.value}');
+    }
     buildCommands.add('-allowProvisioningUpdates');
     buildCommands.add('-allowProvisioningDeviceRegistration');
   }
@@ -329,7 +356,7 @@ Future<XcodeBuildResult> buildXcodeProject({
   }
 
   if (buildForDevice) {
-    buildCommands.addAll(<String>['-sdk', 'iphoneos', '-arch', 'arm64']);
+    buildCommands.addAll(<String>['-sdk', 'iphoneos']);
   } else {
     buildCommands.addAll(<String>['-sdk', 'iphonesimulator', '-arch', 'x86_64']);
   }
@@ -392,8 +419,8 @@ Future<XcodeBuildResult> buildXcodeProject({
   // Free pipe file.
   scriptOutputPipeTempDirectory?.deleteSync(recursive: true);
   printStatus(
-    'Xcode build done',
-    ansiAlternative: 'Xcode build done'.padRight(kDefaultStatusPadding + 1)
+    'Xcode build done.',
+    ansiAlternative: 'Xcode build done.'.padRight(kDefaultStatusPadding + 1)
         + '${getElapsedAsSeconds(buildStopwatch.elapsed).padLeft(5)}',
   );
 
@@ -490,7 +517,7 @@ Future<Null> diagnoseXcodeBuildFailure(XcodeBuildResult result) async {
   }
   if (result.xcodeBuildExecution != null &&
       result.xcodeBuildExecution.buildForPhysicalDevice &&
-      result.xcodeBuildExecution.buildSettings['PRODUCT_BUNDLE_IDENTIFIER'].contains('com.example')) {
+      result.xcodeBuildExecution.buildSettings['PRODUCT_BUNDLE_IDENTIFIER']?.contains('com.example') == true) {
     printError('');
     printError('It appears that your application still contains the default signing identifier.');
     printError("Try replacing 'com.example' with your signing id in Xcode:");
@@ -547,21 +574,17 @@ class XcodeBuildExecution {
   final Map<String, String> buildSettings;
 }
 
-final RegExp _xcodeVersionRegExp = new RegExp(r'Xcode (\d+)\..*');
-final String _xcodeRequirement = 'Xcode $kXcodeRequiredVersionMajor.$kXcodeRequiredVersionMinor or greater is required to develop for iOS.';
+const String _xcodeRequirement = 'Xcode $kXcodeRequiredVersionMajor.$kXcodeRequiredVersionMinor or greater is required to develop for iOS.';
 
 bool _checkXcodeVersion() {
   if (!platform.isMacOS)
     return false;
-  try {
-    final String version = runCheckedSync(<String>['xcodebuild', '-version']);
-    final Match match = _xcodeVersionRegExp.firstMatch(version);
-    if (int.parse(match[1]) < kXcodeRequiredVersionMajor) {
-      printError('Found "${match[0]}". $_xcodeRequirement');
-      return false;
-    }
-  } catch (e) {
+  if (!xcodeProjectInterpreter.isInstalled) {
     printError('Cannot find "xcodebuild". $_xcodeRequirement');
+    return false;
+  }
+  if (!xcode.isVersionSatisfactory) {
+    printError('Found "${xcodeProjectInterpreter.versionText}". $_xcodeRequirement');
     return false;
   }
   return true;
@@ -602,6 +625,9 @@ Future<Null> _copyServiceFrameworks(List<Map<String, String>> services, Director
   }
 }
 
+/// The path of the Xcode project file.
+String _getPbxProjPath(String appPath) => fs.path.join(fs.currentDirectory.path, appPath, 'Runner.xcodeproj', 'project.pbxproj');
+
 void _copyServiceDefinitionsManifest(List<Map<String, String>> services, File manifest) {
   printTrace("Creating service definitions manifest at '${manifest.path}'");
   final List<Map<String, String>> jsonServices = services.map((Map<String, String> service) => <String, String>{
@@ -610,13 +636,12 @@ void _copyServiceDefinitionsManifest(List<Map<String, String>> services, File ma
     // the directory and basenames.
     'framework': fs.path.basenameWithoutExtension(service['ios-framework'])
   }).toList();
-  final Map<String, dynamic> json = <String, dynamic>{ 'services' : jsonServices };
-  manifest.writeAsStringSync(JSON.encode(json), mode: FileMode.WRITE, flush: true);
+  final Map<String, dynamic> jsonObject = <String, dynamic>{ 'services' : jsonServices };
+  manifest.writeAsStringSync(json.encode(jsonObject), mode: FileMode.WRITE, flush: true); // ignore: deprecated_member_use
 }
 
-Future<bool> upgradePbxProjWithFlutterAssets(String app) async {
-  final File xcodeProjectFile = fs.file(fs.path.join('ios', 'Runner.xcodeproj',
-                                                     'project.pbxproj'));
+Future<bool> upgradePbxProjWithFlutterAssets(String app, String appPath) async {
+  final File xcodeProjectFile = fs.file(_getPbxProjPath(appPath));
   assert(await xcodeProjectFile.exists());
   final List<String> lines = await xcodeProjectFile.readAsLines();
 
@@ -639,7 +664,7 @@ Future<bool> upgradePbxProjWithFlutterAssets(String app) async {
   if (!lines.contains(l1) || !lines.contains(l3) ||
       !lines.contains(l5) || !lines.contains(l7)) {
     printError('Automatic upgrade of project.pbxproj failed.');
-    printError(' To manually upgrade, open ios/Runner.xcodeproj/project.pbxproj:');
+    printError(' To manually upgrade, open ${xcodeProjectFile.path}:');
     printError(' Add the following line in the "PBXBuildFile" section');
     printError(l2);
     printError(' Add the following line in the "PBXFileReference" section');

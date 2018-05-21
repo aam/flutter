@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:args/command_runner.dart';
 // ignore: implementation_imports
 import 'package:test/src/executable.dart' as test;
 
@@ -15,7 +16,7 @@ import '../base/process_manager.dart';
 import '../base/terminal.dart';
 import '../dart/package_map.dart';
 import '../globals.dart';
-import '../test/flutter_platform.dart' as loader;
+import 'flutter_platform.dart' as loader;
 import 'watcher.dart';
 
 /// Runs tests using package:test and the Flutter engine.
@@ -29,8 +30,17 @@ Future<int> runTests(
     bool ipv6: false,
     bool machine: false,
     bool previewDart2: false,
+    bool trackWidgetCreation: false,
+    bool updateGoldens: false,
     TestWatcher watcher,
     }) async {
+  if (trackWidgetCreation && !previewDart2) {
+    throw new UsageException(
+      '--track-widget-creation is valid only when --preview-dart-2 is specified.',
+      null,
+    );
+  }
+
   // Compute the command-line arguments for package:test.
   final List<String> testArgs = <String>[];
   if (!terminal.supportsColor)
@@ -67,7 +77,7 @@ Future<int> runTests(
     throwToolExit('Cannot find Flutter shell at $shellPath');
 
   final InternetAddressType serverType =
-      ipv6 ? InternetAddressType.IP_V6 : InternetAddressType.IP_V4;
+      ipv6 ? InternetAddressType.IP_V6 : InternetAddressType.IP_V4; // ignore: deprecated_member_use
 
   loader.installHook(
     shellPath: shellPath,
@@ -77,6 +87,8 @@ Future<int> runTests(
     startPaused: startPaused,
     serverType: serverType,
     previewDart2: previewDart2,
+    trackWidgetCreation: trackWidgetCreation,
+    updateGoldens: updateGoldens,
   );
 
   // Make the global packages path absolute.

@@ -449,10 +449,10 @@ class Localizations extends StatefulWidget {
   _LocalizationsState createState() => new _LocalizationsState();
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<Locale>('locale', locale));
-    description.add(new IterableProperty<LocalizationsDelegate<dynamic>>('delegates', delegates));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Locale>('locale', locale));
+    properties.add(new IterableProperty<LocalizationsDelegate<dynamic>>('delegates', delegates));
   }
 }
 
@@ -544,14 +544,17 @@ class _LocalizationsState extends State<Localizations> {
   Widget build(BuildContext context) {
     if (_locale == null)
       return new Container();
-    return new _LocalizationsScope(
-      key: _localizedResourcesScopeKey,
-      locale: _locale,
-      localizationsState: this,
-      typeToResources: _typeToResources,
-      child: new Directionality(
-        textDirection: _textDirection,
-        child: widget.child,
+    return new Semantics(
+      textDirection: _textDirection,
+      child: new _LocalizationsScope(
+        key: _localizedResourcesScopeKey,
+        locale: _locale,
+        localizationsState: this,
+        typeToResources: _typeToResources,
+        child: new Directionality(
+          textDirection: _textDirection,
+          child: widget.child,
+        ),
       ),
     );
   }

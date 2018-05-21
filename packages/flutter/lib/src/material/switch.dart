@@ -88,12 +88,12 @@ class Switch extends StatefulWidget {
 
   /// The color to use when this switch is on.
   ///
-  /// Defaults to accent color of the current [Theme].
+  /// Defaults to [ThemeData.toggleableActiveColor].
   final Color activeColor;
 
   /// The color to use on the track when this switch is on.
   ///
-  /// Defaults to accent color of the current [Theme] with the opacity set at 50%.
+  /// Defaults to [ThemeData.toggleableActiveColor] with the opacity set at 50%.
   final Color activeTrackColor;
 
   /// The color to use on the thumb when this switch is off.
@@ -116,10 +116,10 @@ class Switch extends StatefulWidget {
   _SwitchState createState() => new _SwitchState();
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new FlagProperty('value', value: value, ifTrue: 'on', ifFalse: 'off', showName: true));
-    description.add(new ObjectFlagProperty<ValueChanged<bool>>('onChanged', onChanged, ifNull: 'disabled'));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new FlagProperty('value', value: value, ifTrue: 'on', ifFalse: 'off', showName: true));
+    properties.add(new ObjectFlagProperty<ValueChanged<bool>>('onChanged', onChanged, ifNull: 'disabled'));
   }
 }
 
@@ -130,7 +130,7 @@ class _SwitchState extends State<Switch> with TickerProviderStateMixin {
     final ThemeData themeData = Theme.of(context);
     final bool isDark = themeData.brightness == Brightness.dark;
 
-    final Color activeThumbColor = widget.activeColor ?? themeData.accentColor;
+    final Color activeThumbColor = widget.activeColor ?? themeData.toggleableActiveColor;
     final Color activeTrackColor = widget.activeTrackColor ?? activeThumbColor.withAlpha(0x80);
 
     Color inactiveThumbColor;
@@ -413,7 +413,7 @@ class _RenderSwitch extends RenderToggleable {
     // Paint the track
     final Paint paint = new Paint()
       ..color = trackColor;
-    final double trackHorizontalPadding = kRadialReactionRadius - _kTrackRadius;
+    const double trackHorizontalPadding = kRadialReactionRadius - _kTrackRadius;
     final Rect trackRect = new Rect.fromLTWH(
       offset.dx + trackHorizontalPadding,
       offset.dy + (size.height - _kTrackHeight) / 2.0,

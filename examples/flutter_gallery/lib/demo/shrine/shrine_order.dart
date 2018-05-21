@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../shrine_demo.dart' show ShrinePageRoute;
@@ -327,7 +326,7 @@ class ShrineOrderRoute extends ShrinePageRoute<Order> {
   ShrineOrderRoute({
     @required this.order,
     WidgetBuilder builder,
-    RouteSettings settings: const RouteSettings(),
+    RouteSettings settings,
   }) : assert(order != null),
        super(builder: builder, settings: settings);
 
@@ -336,5 +335,5 @@ class ShrineOrderRoute extends ShrinePageRoute<Order> {
   @override
   Order get currentResult => order;
 
-  static ShrineOrderRoute of(BuildContext context) => ModalRoute.of(context);
+  static ShrineOrderRoute of(BuildContext context) => ModalRoute.of<Order>(context);
 }

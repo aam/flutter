@@ -62,6 +62,9 @@ const List<TimelineStream> _defaultStreams = const <TimelineStream>[TimelineStre
 /// Default timeout for short-running RPCs.
 const Duration _kShortTimeout = const Duration(seconds: 5);
 
+/// Default timeout for awaiting an Isolate to become runnable.
+const Duration _kIsolateLoadRunnableTimeout = const Duration(minutes: 1);
+
 /// Default timeout for long-running RPCs.
 final Duration _kLongTimeout = _kShortTimeout * 6;
 
@@ -125,10 +128,10 @@ class FlutterDriver {
        _logCommunicationToFile = logCommunicationToFile,
        _driverId = _nextDriverId++;
 
-  static const String _kFlutterExtensionMethod = 'ext.flutter.driver';
-  static const String _kSetVMTimelineFlagsMethod = '_setVMTimelineFlags';
-  static const String _kGetVMTimelineMethod = '_getVMTimeline';
-  static const String _kClearVMTimelineMethod = '_clearVMTimeline';
+  static const String _flutterExtensionMethodName = 'ext.flutter.driver';
+  static const String _setVMTimelineFlagsMethodName = '_setVMTimelineFlags';
+  static const String _getVMTimelineMethodName = '_getVMTimeline';
+  static const String _clearVMTimelineMethodName = '_clearVMTimeline';
 
   static int _nextDriverId = 0;
 
@@ -145,26 +148,47 @@ class FlutterDriver {
   ///
   /// [logCommunicationToFile] determines whether the command communication
   /// between the test and the app should be logged to `flutter_driver_commands.log`.
-  static Future<FlutterDriver> connect({ String dartVmServiceUrl,
-                                         bool printCommunication: false,
-                                         bool logCommunicationToFile: true }) async {
+  ///
+  /// [isolateNumber] (optional) determines the specific isolate to connect to.
+  /// If this is left as `null`, will connect to the first isolate found
+  /// running on [dartVmServiceUrl].
+  ///
+  /// [isolateReadyTimeout] determines how long after we connect to the VM
+  /// service we will wait for the first isolate to become runnable.
+  static Future<FlutterDriver> connect({
+    String dartVmServiceUrl,
+    bool printCommunication: false,
+    bool logCommunicationToFile: true,
+    int isolateNumber,
+    Duration isolateReadyTimeout: _kIsolateLoadRunnableTimeout,
+  }) async {
     dartVmServiceUrl ??= Platform.environment['VM_SERVICE_URL'];
 
     if (dartVmServiceUrl == null) {
       throw new DriverError(
-        'Could not determine URL to connect to application.\n'
-        'Either the VM_SERVICE_URL environment variable should be set, or an explicit\n'
-        'URL should be provided to the FlutterDriver.connect() method.'
-      );
+          'Could not determine URL to connect to application.\n'
+          'Either the VM_SERVICE_URL environment variable should be set, or an explicit\n'
+          'URL should be provided to the FlutterDriver.connect() method.');
     }
 
-    // Connect to Dart VM servcies
+    // Connect to Dart VM services
     _log.info('Connecting to Flutter application at $dartVmServiceUrl');
-    final VMServiceClientConnection connection = await vmServiceConnectFunction(dartVmServiceUrl);
+    final VMServiceClientConnection connection =
+        await vmServiceConnectFunction(dartVmServiceUrl);
     final VMServiceClient client = connection.client;
     final VM vm = await client.getVM();
-    _log.trace('Looking for the isolate');
-    VMIsolate isolate = await vm.isolates.first.loadRunnable();
+    final VMIsolateRef isolateRef = isolateNumber ==
+        null ? vm.isolates.first :
+               vm.isolates.firstWhere(
+                   (VMIsolateRef isolate) => isolate.number == isolateNumber);
+    _log.trace('Isolate found with number: ${isolateRef.number}');
+
+    VMIsolate isolate = await isolateRef
+        .loadRunnable()
+        .timeout(isolateReadyTimeout, onTimeout: () {
+      throw new TimeoutException(
+          'Timeout while waiting for the isolate to become runnable');
+    });
 
     // TODO(yjbanov): vm_service_client does not support "None" pause event yet.
     // It is currently reported as null, but we cannot rely on it because
@@ -180,7 +204,7 @@ class FlutterDriver {
         isolate.pauseEvent is! VMPauseInterruptedEvent &&
         isolate.pauseEvent is! VMResumeEvent) {
       await new Future<Null>.delayed(_kShortTimeout ~/ 10);
-      isolate = await vm.isolates.first.loadRunnable();
+      isolate = await isolateRef.loadRunnable();
     }
 
     final FlutterDriver driver = new FlutterDriver.connectedTo(
@@ -211,10 +235,10 @@ class FlutterDriver {
     }
 
     /// Waits for a signal from the VM service that the extension is registered.
-    /// Returns [_kFlutterExtensionMethod]
+    /// Returns [_flutterExtensionMethodName]
     Future<String> waitForServiceExtension() {
       return isolate.onExtensionAdded.firstWhere((String extension) {
-        return extension == _kFlutterExtensionMethod;
+        return extension == _flutterExtensionMethodName;
       });
     }
 
@@ -310,7 +334,7 @@ class FlutterDriver {
   /// JSON-RPC client useful for sending raw JSON requests.
   final rpc.Peer _peer;
   /// The main isolate hosting the Flutter application
-  final VMIsolateRef _appIsolate;
+  final VMIsolate _appIsolate;
   /// Whether to print communication between host and app to `stdout`.
   final bool _printCommunication;
   /// Whether to log communication between host and app to `flutter_driver_commands.log`.
@@ -322,7 +346,7 @@ class FlutterDriver {
       final Map<String, String> serialized = command.serialize();
       _logCommunication('>>> $serialized');
       response = await _appIsolate
-          .invokeExtension(_kFlutterExtensionMethod, serialized)
+          .invokeExtension(_flutterExtensionMethodName, serialized)
           .timeout(command.timeout + _kRpcGraceTime);
       _logCommunication('<<< $response');
     } on TimeoutException catch (error, stackTrace) {
@@ -349,7 +373,7 @@ class FlutterDriver {
     if (_logCommunicationToFile) {
       final f.File file = fs.file(p.join(testOutputsDirectory, 'flutter_driver_commands_$_driverId.log'));
       file.createSync(recursive: true); // no-op if file exists
-      file.writeAsStringSync('${new DateTime.now()} $message\n', mode: f.FileMode.APPEND, flush: true);
+      file.writeAsStringSync('${new DateTime.now()} $message\n', mode: f.FileMode.APPEND, flush: true); // ignore: deprecated_member_use
     }
   }
 
@@ -409,8 +433,64 @@ class FlutterDriver {
 
   /// Scrolls the Scrollable ancestor of the widget located by [finder]
   /// until the widget is completely visible.
+  ///
+  /// If the widget located by [finder] is contained by a scrolling widget
+  /// that lazily creates its children, like [ListView] or [CustomScrollView],
+  /// then this method may fail because [finder] doesn't actually exist.
+  /// The [scrollUntilVisible] method can be used in this case.
   Future<Null> scrollIntoView(SerializableFinder finder, { double alignment: 0.0, Duration timeout }) async {
     return await _sendCommand(new ScrollIntoView(finder, alignment: alignment, timeout: timeout)).then((Map<String, dynamic> _) => null);
+  }
+
+  /// Repeatedly [scroll] the widget located by [scrollable] by [dxScroll] and
+  /// [dyScroll] until [item] is visible, and then use [scrollIntoView] to
+  /// ensure the item's final position matches [alignment].
+  ///
+  /// The [scrollable] must locate the scrolling widget that contains [item].
+  /// Typically `find.byType('ListView') or `find.byType('CustomScrollView')`.
+  ///
+  /// Atleast one of [dxScroll] and [dyScroll] must be non-zero.
+  ///
+  /// If [item] is below the currently visible items, then specify a negative
+  /// value for [dyScroll] that's a small enough increment to expose [item]
+  /// without potentially scrolling it up and completely out of view. Similarly
+  /// if [item] is above, then specify a positve value for [dyScroll].
+  ///
+  /// If [item] is to the right of the the currently visible items, then
+  /// specify a negative value for [dxScroll] that's a small enough increment to
+  /// expose [item] without potentially scrolling it up and completely out of
+  /// view. Similarly if [item] is to the left, then specify a positve value
+  /// for [dyScroll].
+  ///
+  /// The [timeout] value should be long enough to accommodate as many scrolls
+  /// as needed to bring an item into view. The default is 10 seconds.
+  Future<Null> scrollUntilVisible(SerializableFinder scrollable, SerializableFinder item, {
+    double alignment: 0.0,
+    double dxScroll: 0.0,
+    double dyScroll: 0.0,
+    Duration timeout: const Duration(seconds: 10),
+  }) async {
+    assert(scrollable != null);
+    assert(item != null);
+    assert(alignment != null);
+    assert(dxScroll != null);
+    assert(dyScroll != null);
+    assert(dxScroll != 0.0 || dyScroll != 0.0);
+    assert(timeout != null);
+
+    // Kick off an (unawaited) waitFor that will complete when the item we're
+    // looking for finally scrolls onscreen. We add an initial pause to give it
+    // the chance to complete if the item is already onscreen; if not, scroll
+    // repeatedly until we either find the item or time out.
+    bool isVisible = false;
+    waitFor(item, timeout: timeout).then((Null _) { isVisible = true; });
+    await new Future<Null>.delayed(const Duration(milliseconds: 500));
+    while (!isVisible) {
+      await scroll(scrollable, dxScroll, dyScroll, const Duration(milliseconds: 100));
+      await new Future<Null>.delayed(const Duration(milliseconds: 500));
+    }
+
+    return scrollIntoView(item, alignment: alignment);
   }
 
   /// Returns the text in the `Text` widget located by [finder].
@@ -530,7 +610,7 @@ class FlutterDriver {
     await new Future<Null>.delayed(const Duration(seconds: 2));
 
     final Map<String, dynamic> result = await _peer.sendRequest('_flutter.screenshot').timeout(timeout);
-    return BASE64.decode(result['screenshot']);
+    return base64.decode(result['screenshot']);
   }
 
   /// Returns the Flags set in the Dart VM as JSON.
@@ -564,7 +644,7 @@ class FlutterDriver {
   }) async {
     assert(streams != null && streams.isNotEmpty);
     try {
-      await _peer.sendRequest(_kSetVMTimelineFlagsMethod, <String, String>{
+      await _peer.sendRequest(_setVMTimelineFlagsMethodName, <String, String>{
         'recordedStreams': _timelineStreamsToString(streams)
       }).timeout(timeout);
       return null;
@@ -581,9 +661,9 @@ class FlutterDriver {
   Future<Timeline> stopTracingAndDownloadTimeline({ Duration timeout: _kShortTimeout }) async {
     try {
       await _peer
-          .sendRequest(_kSetVMTimelineFlagsMethod, <String, String>{'recordedStreams': '[]'})
+          .sendRequest(_setVMTimelineFlagsMethodName, <String, String>{'recordedStreams': '[]'})
           .timeout(timeout);
-      return new Timeline.fromJson(await _peer.sendRequest(_kGetVMTimelineMethod));
+      return new Timeline.fromJson(await _peer.sendRequest(_getVMTimelineMethodName));
     } catch (error, stackTrace) {
       throw new DriverError(
         'Failed to stop tracing due to remote error',
@@ -624,7 +704,7 @@ class FlutterDriver {
   Future<Null> clearTimeline({ Duration timeout: _kShortTimeout }) async {
     try {
       await _peer
-          .sendRequest(_kClearVMTimelineMethod, <String, String>{})
+          .sendRequest(_clearVMTimelineMethodName, <String, String>{})
           .timeout(timeout);
     } catch (error, stackTrace) {
       throw new DriverError(
@@ -717,8 +797,8 @@ Future<VMServiceClientConnection> _waitAndConnect(String url) async {
     WebSocket ws1;
     WebSocket ws2;
     try {
-      ws1 = await WebSocket.connect(uri.toString());
-      ws2 = await WebSocket.connect(uri.toString());
+      ws1 = await WebSocket.connect(uri.toString()).timeout(_kShortTimeout);
+      ws2 = await WebSocket.connect(uri.toString()).timeout(_kShortTimeout);
       return new VMServiceClientConnection(
         new VMServiceClient(new IOWebSocketChannel(ws1).cast()),
         new rpc.Peer(new IOWebSocketChannel(ws2).cast())..listen()

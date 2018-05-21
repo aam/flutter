@@ -206,6 +206,9 @@ class FlutterDriverExtension {
 
   /// Runs `finder` repeatedly until it finds one or more [Element]s.
   Future<Finder> _waitForElement(Finder finder) async {
+    // TODO(mravn): This method depends on async execution. A refactoring
+    // for sync-async semantics is tracked in https://github.com/flutter/flutter/issues/16801.
+    await new Future<void>.value(null);
     if (_frameSync)
       await _waitUntilFrame(() => SchedulerBinding.instance.transientCallbackCount == 0);
 
@@ -298,7 +301,7 @@ class FlutterDriverExtension {
   Future<ScrollResult> _scroll(Command command) async {
     final Scroll scrollCommand = command;
     final Finder target = await _waitForElement(_createFinder(scrollCommand.finder));
-    final int totalMoves = scrollCommand.duration.inMicroseconds * scrollCommand.frequency ~/ Duration.MICROSECONDS_PER_SECOND;
+    final int totalMoves = scrollCommand.duration.inMicroseconds * scrollCommand.frequency ~/ Duration.microsecondsPerSecond;
     final Offset delta = new Offset(scrollCommand.dx, scrollCommand.dy) / totalMoves.toDouble();
     final Duration pause = scrollCommand.duration ~/ totalMoves;
     final Offset startLocation = _prober.getCenter(target);

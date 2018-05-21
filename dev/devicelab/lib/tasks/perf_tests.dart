@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 import 'dart:async';
-import 'dart:convert' show JSON;
+import 'dart:convert' show json;
 import 'dart:io';
 
 import '../framework/adb.dart';
@@ -77,6 +77,13 @@ TaskFunction createFlutterViewStartupTest() {
   ).run;
 }
 
+TaskFunction createPlatformViewStartupTest() {
+  return new StartupTest(
+    '${flutterDirectory.path}/examples/platform_view',
+    reportMetrics: false,
+  ).run;
+}
+
 TaskFunction createBasicMaterialCompileTest() {
   return () async {
     const String sampleAppName = 'sample_flutter_app';
@@ -121,7 +128,7 @@ class StartupTest {
         '-d',
         deviceId,
       ]).timeout(_startupTimeout);
-      final Map<String, dynamic> data = JSON.decode(file('$testDirectory/build/start_up_info.json').readAsStringSync());
+      final Map<String, dynamic> data = json.decode(file('$testDirectory/build/start_up_info.json').readAsStringSync());
 
       if (!reportMetrics)
         return new TaskResult.success(data);
@@ -161,7 +168,7 @@ class PerfTest {
         '-d',
         deviceId,
       ]);
-      final Map<String, dynamic> data = JSON.decode(file('$testDirectory/build/$timelineFileName.timeline_summary.json').readAsStringSync());
+      final Map<String, dynamic> data = json.decode(file('$testDirectory/build/$timelineFileName.timeline_summary.json').readAsStringSync());
 
       if (data['frame_count'] < 5) {
         return new TaskResult.failure(
@@ -199,9 +206,9 @@ class CompileTest {
         ..addAll(await _compileAot())
         ..addAll(await _compileApp())
         ..addAll(await _compileDebug())
-        ..addAll(_suffix(await _compileAot(previewDart2: true), '__preview_dart_2'))
-        ..addAll(_suffix(await _compileApp(previewDart2: true), '__preview_dart_2'))
-        ..addAll(_suffix(await _compileDebug(previewDart2: true), '__preview_dart_2'));
+        ..addAll(_suffix(await _compileAot(previewDart2: false), '__dart1'))
+        ..addAll(_suffix(await _compileApp(previewDart2: false), '__dart1'))
+        ..addAll(_suffix(await _compileDebug(previewDart2: false), '__dart1'));
 
       return new TaskResult.success(metrics, benchmarkScoreKeys: metrics.keys.toList());
     });
@@ -214,7 +221,7 @@ class CompileTest {
     );
   }
 
-  static Future<Map<String, dynamic>> _compileAot({ bool previewDart2: false }) async {
+  static Future<Map<String, dynamic>> _compileAot({ bool previewDart2: true }) async {
     // Generate blobs instead of assembly.
     await flutter('clean');
     final Stopwatch watch = new Stopwatch()..start();
@@ -235,6 +242,8 @@ class CompileTest {
     }
     if (previewDart2)
       options.add('--preview-dart-2');
+    else
+      options.add('--no-preview-dart-2');
     setLocalEngineOptionIfNecessary(options);
     final String compileLog = await evalFlutter('build', options: options);
     watch.stop();
@@ -249,13 +258,15 @@ class CompileTest {
     return metrics;
   }
 
-  static Future<Map<String, dynamic>> _compileApp({ bool previewDart2: false }) async {
+  static Future<Map<String, dynamic>> _compileApp({ bool previewDart2: true }) async {
     await flutter('clean');
     final Stopwatch watch = new Stopwatch();
     int releaseSizeInBytes;
     final List<String> options = <String>['--release'];
     if (previewDart2)
       options.add('--preview-dart-2');
+    else
+      options.add('--no-preview-dart-2');
     setLocalEngineOptionIfNecessary(options);
     switch (deviceOperatingSystem) {
       case DeviceOperatingSystem.ios:
@@ -288,12 +299,14 @@ class CompileTest {
     };
   }
 
-  static Future<Map<String, dynamic>> _compileDebug({ bool previewDart2: false }) async {
+  static Future<Map<String, dynamic>> _compileDebug({ bool previewDart2: true }) async {
     await flutter('clean');
     final Stopwatch watch = new Stopwatch();
     final List<String> options = <String>['--debug'];
     if (previewDart2)
       options.add('--preview-dart-2');
+    else
+      options.add('--no-preview-dart-2');
     setLocalEngineOptionIfNecessary(options);
     switch (deviceOperatingSystem) {
       case DeviceOperatingSystem.ios:

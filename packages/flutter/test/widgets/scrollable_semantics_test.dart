@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/rendering.dart';
@@ -12,9 +14,8 @@ import 'semantics_tester.dart';
 void main() {
   SemanticsTester semantics;
 
-  tearDown(() {
-    semantics?.dispose();
-    semantics = null;
+  setUp(() {
+    debugResetSemanticsIdCounter();
   });
 
   testWidgets('scrollable exposes the correct semantic actions', (WidgetTester tester) async {
@@ -43,6 +44,8 @@ void main() {
 
     await flingDown(tester);
     expect(semantics, includesNodeWith(actions: <SemanticsAction>[SemanticsAction.scrollUp, SemanticsAction.scrollDown]));
+
+    semantics.dispose();
   });
 
   testWidgets('showOnScreen works in scrollable', (WidgetTester tester) async {
@@ -79,6 +82,8 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
 
     expect(scrollController.offset, 0.0);
+
+    semantics.dispose();
   });
 
   testWidgets('showOnScreen works with pinned app bar and sliver list', (WidgetTester tester) async {
@@ -137,6 +142,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 5));
     expect(tester.getTopLeft(find.byWidget(containers[1])).dy, kExpandedAppBarHeight);
+
+    semantics.dispose();
   });
 
   testWidgets('showOnScreen works with pinned app bar and individual slivers', (WidgetTester tester) async {
@@ -201,6 +208,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 5));
     expect(tester.getTopLeft(find.byWidget(children[1])).dy, kToolbarHeight);
+
+    semantics.dispose();
   });
 
   testWidgets('correct scrollProgress', (WidgetTester tester) async {
@@ -245,6 +254,8 @@ void main() {
         SemanticsAction.scrollDown,
       ],
     ));
+
+    semantics.dispose();
   });
 
   testWidgets('correct scrollProgress for unbound', (WidgetTester tester) async {
@@ -292,6 +303,8 @@ void main() {
         SemanticsAction.scrollDown,
       ],
     ));
+
+    semantics.dispose();
   });
 
   testWidgets('Semantics tree is populated mid-scroll', (WidgetTester tester) async {
@@ -317,6 +330,8 @@ void main() {
     expect(semantics, includesNodeWith(label: 'Item 1'));
     expect(semantics, includesNodeWith(label: 'Item 2'));
     expect(semantics, includesNodeWith(label: 'Item 3'));
+
+    semantics.dispose();
   });
 
   testWidgets('Can toggle semantics on, off, on without crash', (WidgetTester tester) async {
@@ -327,11 +342,39 @@ void main() {
           children: new List<Widget>.generate(40, (int i) {
             return new Container(
               child: new Text('item $i'),
-              height: 40.0,
+              height: 400.0,
             );
           }),
         ),
       ),
+    );
+
+    final TestSemantics expectedSemantics = new TestSemantics.root(
+      children: <TestSemantics>[
+        new TestSemantics.rootChild(
+          children: <TestSemantics>[
+            new TestSemantics(
+              actions: <SemanticsAction>[SemanticsAction.scrollUp],
+              children: <TestSemantics>[
+                new TestSemantics(
+                  label: r'item 0',
+                  textDirection: TextDirection.ltr,
+                ),
+                new TestSemantics(
+                  label: r'item 1',
+                  textDirection: TextDirection.ltr,
+                ),
+                new TestSemantics(
+                  flags: <SemanticsFlag>[
+                    SemanticsFlag.isHidden,
+                  ],
+                  label: r'item 2',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
     );
 
     // Start with semantics off.
@@ -341,6 +384,7 @@ void main() {
     semantics = new SemanticsTester(tester);
     await tester.pumpAndSettle();
     expect(tester.binding.pipelineOwner.semanticsOwner, isNotNull);
+    expect(semantics, hasSemantics(expectedSemantics, ignoreId: true, ignoreRect: true, ignoreTransform: true));
 
     // Semantics off
     semantics.dispose();
@@ -351,6 +395,9 @@ void main() {
     semantics = new SemanticsTester(tester);
     await tester.pumpAndSettle();
     expect(tester.binding.pipelineOwner.semanticsOwner, isNotNull);
+    expect(semantics, hasSemantics(expectedSemantics, ignoreId: true, ignoreRect: true, ignoreTransform: true));
+
+    semantics.dispose();
   });
 }
 

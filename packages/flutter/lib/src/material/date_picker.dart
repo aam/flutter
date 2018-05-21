@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -204,7 +203,7 @@ class _DayPickerGridDelegate extends SliverGridDelegate {
 
   @override
   SliverGridLayout getLayout(SliverConstraints constraints) {
-    final int columnCount = DateTime.DAYS_PER_WEEK;
+    const int columnCount = DateTime.daysPerWeek;
     final double tileWidth = constraints.crossAxisExtent / columnCount;
     final double tileHeight = math.min(_kDayPickerRowHeight, constraints.viewportMainAxisExtent / (_kMaxDayPickerRowCount + 1));
     return new SliverGridRegularTileLayout(
@@ -311,7 +310,7 @@ class DayPicker extends StatelessWidget {
   }
 
   // Do not use this directly - call getDaysInMonth instead.
-  static const List<int> _kDaysInMonth = const <int>[31, -1, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  static const List<int> _daysInMonth = const <int>[31, -1, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
   /// Returns the number of days in a month, according to the proleptic
   /// Gregorian calendar.
@@ -319,13 +318,13 @@ class DayPicker extends StatelessWidget {
   /// This applies the leap year logic introduced by the Gregorian reforms of
   /// 1582. It will not give valid results for dates prior to that time.
   static int getDaysInMonth(int year, int month) {
-    if (month == DateTime.FEBRUARY) {
+    if (month == DateTime.february) {
       final bool isLeapYear = (year % 4 == 0) && (year % 100 != 0) || (year % 400 == 0);
       if (isLeapYear)
         return 29;
       return 28;
     }
-    return _kDaysInMonth[month - 1];
+    return _daysInMonth[month - 1];
   }
 
   /// Computes the offset from the first day of week that the first day of the
@@ -641,30 +640,39 @@ class _MonthPickerState extends State<MonthPicker> {
       height: _kMaxDayPickerHeight,
       child: new Stack(
         children: <Widget>[
-          new PageView.builder(
-            key: new ValueKey<DateTime>(widget.selectedDate),
-            controller: _dayPickerController,
-            scrollDirection: Axis.horizontal,
-            itemCount: _monthDelta(widget.firstDate, widget.lastDate) + 1,
-            itemBuilder: _buildItems,
-            onPageChanged: _handleMonthPageChanged,
+          new Semantics(
+            sortKey: _MonthPickerSortKey.calendar,
+            child: new PageView.builder(
+              key: new ValueKey<DateTime>(widget.selectedDate),
+              controller: _dayPickerController,
+              scrollDirection: Axis.horizontal,
+              itemCount: _monthDelta(widget.firstDate, widget.lastDate) + 1,
+              itemBuilder: _buildItems,
+              onPageChanged: _handleMonthPageChanged,
+            ),
           ),
           new PositionedDirectional(
             top: 0.0,
             start: 8.0,
-            child: new IconButton(
-              icon: const Icon(Icons.chevron_left),
-              tooltip: _isDisplayingFirstMonth ? null : '${localizations.previousMonthTooltip} ${localizations.formatMonthYear(_previousMonthDate)}',
-              onPressed: _isDisplayingFirstMonth ? null : _handlePreviousMonth,
+            child: new Semantics(
+              sortKey: _MonthPickerSortKey.previousMonth,
+              child: new IconButton(
+                icon: const Icon(Icons.chevron_left),
+                tooltip: _isDisplayingFirstMonth ? null : '${localizations.previousMonthTooltip} ${localizations.formatMonthYear(_previousMonthDate)}',
+                onPressed: _isDisplayingFirstMonth ? null : _handlePreviousMonth,
+              ),
             ),
           ),
           new PositionedDirectional(
             top: 0.0,
             end: 8.0,
-            child: new IconButton(
-              icon: const Icon(Icons.chevron_right),
-              tooltip: _isDisplayingLastMonth ? null : '${localizations.nextMonthTooltip} ${localizations.formatMonthYear(_nextMonthDate)}',
-              onPressed: _isDisplayingLastMonth ? null : _handleNextMonth,
+            child: new Semantics(
+              sortKey: _MonthPickerSortKey.nextMonth,
+              child: new IconButton(
+                icon: const Icon(Icons.chevron_right),
+                tooltip: _isDisplayingLastMonth ? null : '${localizations.nextMonthTooltip} ${localizations.formatMonthYear(_nextMonthDate)}',
+                onPressed: _isDisplayingLastMonth ? null : _handleNextMonth,
+              ),
             ),
           ),
         ],
@@ -678,6 +686,16 @@ class _MonthPickerState extends State<MonthPicker> {
     _dayPickerController?.dispose();
     super.dispose();
   }
+}
+
+// Defines semantic traversal order of the top-level widgets inside the month
+// picker.
+class _MonthPickerSortKey extends OrdinalSortKey {
+  static const _MonthPickerSortKey previousMonth = const _MonthPickerSortKey(1.0);
+  static const _MonthPickerSortKey nextMonth = const _MonthPickerSortKey(2.0);
+  static const _MonthPickerSortKey calendar = const _MonthPickerSortKey(3.0);
+
+  const _MonthPickerSortKey(double order) : super(order);
 }
 
 /// A scrollable list of years to allow picking a year.
@@ -896,6 +914,7 @@ class _DatePickerDialogState extends State<_DatePickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
     final Widget picker = new Flexible(
       child: new SizedBox(
         height: _kMaxDayPickerHeight,
@@ -916,7 +935,7 @@ class _DatePickerDialogState extends State<_DatePickerDialog> {
         ],
       ),
     );
-    return new Dialog(
+    final Dialog dialog = new Dialog(
       child: new OrientationBuilder(
         builder: (BuildContext context, Orientation orientation) {
           assert(orientation != null);
@@ -933,7 +952,20 @@ class _DatePickerDialogState extends State<_DatePickerDialog> {
                 child: new Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[header, picker, actions],
+                  children: <Widget>[
+                    header,
+                    new Container(
+                      color: theme.dialogBackgroundColor,
+                      child: new Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          picker,
+                          actions,
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               );
             case Orientation.landscape:
@@ -945,8 +977,9 @@ class _DatePickerDialogState extends State<_DatePickerDialog> {
                   children: <Widget>[
                     header,
                     new Flexible(
-                      child: new SizedBox(
+                      child: new Container(
                         width: _kMonthPickerLandscapeWidth,
+                        color: theme.dialogBackgroundColor,
                         child: new Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -961,6 +994,13 @@ class _DatePickerDialogState extends State<_DatePickerDialog> {
           return null;
         }
       )
+    );
+
+    return new Theme(
+      data: theme.copyWith(
+        dialogBackgroundColor: Colors.transparent,
+      ),
+      child: dialog,
     );
   }
 }
@@ -1042,6 +1082,6 @@ Future<DateTime> showDatePicker({
 
   return await showDialog<DateTime>(
     context: context,
-    child: child,
+    builder: (BuildContext context) => child,
   );
 }

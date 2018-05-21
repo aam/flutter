@@ -7,7 +7,6 @@
 
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -200,7 +199,7 @@ class _AllSectionsLayout extends MultiChildLayoutDelegate {
 
     // When tCollapsed > 0, the indicators move closer together
     //final double rowIndicatorWidth = 48.0 + (1.0 - tCollapsed) * (rowTitleWidth - 48.0);
-    final double paddedSectionIndicatorWidth = kSectionIndicatorWidth + 8.0;
+    const double paddedSectionIndicatorWidth = kSectionIndicatorWidth + 8.0;
     final double rowIndicatorWidth = paddedSectionIndicatorWidth +
       (1.0 - tCollapsed) * (rowTitleWidth - paddedSectionIndicatorWidth);
     double rowIndicatorX = (size.width - rowIndicatorWidth) / 2.0 - selectedIndex * rowIndicatorWidth;
@@ -398,7 +397,7 @@ class _SnappingScrollPhysics extends ClampingScrollPhysics {
       // If the simulation is headed up towards midScrollOffset but will not reach it,
       // then snap it there. Similarly if the simulation is headed down past
       // midScrollOffset but will not reach zero, then snap it to zero.
-      final double simulationEnd = simulation.x(double.INFINITY);
+      final double simulationEnd = simulation.x(double.infinity);
       if (simulationEnd >= midScrollOffset)
         return simulation;
       if (dragVelocity > 0.0)
@@ -451,7 +450,7 @@ class _AnimationDemoHomeState extends State<AnimationDemoHome> {
     if (_scrollController.offset >= midScrollOffset)
       _scrollController.animateTo(0.0, curve: _kScrollCurve, duration: _kScrollDuration);
     else
-      Navigator.of(context).maybePop();
+      Navigator.maybePop(context);
   }
 
   // Only enable paging for the heading when the user has scrolled to midScrollOffset.

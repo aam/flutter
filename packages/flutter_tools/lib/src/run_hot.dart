@@ -292,7 +292,8 @@ class HotRunner extends ResidentRunner {
         bundleFirstUpload: isFirstUpload,
         bundleDirty: isFirstUpload == false && rebuildBundle,
         fileFilter: _dartDependencies,
-        fullRestart: fullRestart
+        fullRestart: fullRestart,
+        projectRootPath: projectRootPath,
       );
       if (!result)
         return false;
@@ -405,7 +406,7 @@ class HotRunner extends ResidentRunner {
     // We are now running from source.
     _runningFromSnapshot = false;
     final String launchPath = debuggingOptions.buildInfo.previewDart2
-        ? dillOutputPath ?? mainPath + '.dill'
+        ? mainPath + '.dill'
         : mainPath;
     await _launchFromDevFS(launchPath);
     restartTimer.stop();
@@ -447,7 +448,7 @@ class HotRunner extends ResidentRunner {
   Future<OperationResult> restart({ bool fullRestart: false, bool pauseAfterRestart: false }) async {
     if (fullRestart) {
       final Status status = logger.startProgress(
-        'Performing full restart...',
+        'Performing hot restart...',
         progressId: 'hot.restart'
       );
       try {
@@ -512,6 +513,7 @@ class HotRunner extends ResidentRunner {
     // change from host path to a device path). Subsequent reloads will
     // not be affected, so we resume reporting reload times on the second
     // reload.
+    final bool reportUnused = !debuggingOptions.buildInfo.previewDart2;
     final bool shouldReportReloadTime = !_runningFromSnapshot;
     final Stopwatch reloadTimer = new Stopwatch()..start();
 
@@ -545,7 +547,9 @@ class HotRunner extends ResidentRunner {
           pause: pause
         );
         countExpectedReports += reports.length;
-        Future.wait(reports).then((List<Map<String, dynamic>> list) {
+        Future.wait(reports).catchError((dynamic error) {
+          return <Map<String, dynamic>>[error];
+        }).then((List<Map<String, dynamic>> list) {
           // TODO(aam): Investigate why we are validating only first reload report,
           // which seems to be current behavior
           final Map<String, dynamic> firstReport = list.first;
@@ -672,7 +676,7 @@ class HotRunner extends ResidentRunner {
       flutterUsage.sendTiming('hot', 'reload', reloadTimer.elapsed);
 
     String unusedElementMessage;
-    if (!reassembleAndScheduleErrors && !reassembleTimedOut) {
+    if (reportUnused && !reassembleAndScheduleErrors && !reassembleTimedOut) {
       final List<Future<List<ProgramElement>>> unusedReports =
         <Future<List<ProgramElement>>>[];
       for (FlutterDevice device in flutterDevices)

@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
 import 'basic.dart';
@@ -57,6 +56,7 @@ class Viewport extends MultiChildRenderObjectWidget {
     this.anchor: 0.0,
     @required this.offset,
     this.center,
+    this.cacheExtent,
     List<Widget> slivers: const <Widget>[],
   }) : assert(offset != null),
        assert(slivers != null),
@@ -109,6 +109,9 @@ class Viewport extends MultiChildRenderObjectWidget {
   /// The [center] must be the key of a child of the viewport.
   final Key center;
 
+  /// {@macro flutter.rendering.viewport.cacheExtent}
+  final double cacheExtent;
+
   /// Given a [BuildContext] and an [AxisDirection], determine the correct cross
   /// axis direction.
   ///
@@ -136,6 +139,7 @@ class Viewport extends MultiChildRenderObjectWidget {
       crossAxisDirection: crossAxisDirection ?? Viewport.getDefaultCrossAxisDirection(context, axisDirection),
       anchor: anchor,
       offset: offset,
+      cacheExtent: cacheExtent,
     );
   }
 
@@ -145,23 +149,24 @@ class Viewport extends MultiChildRenderObjectWidget {
       ..axisDirection = axisDirection
       ..crossAxisDirection = crossAxisDirection ?? Viewport.getDefaultCrossAxisDirection(context, axisDirection)
       ..anchor = anchor
-      ..offset = offset;
+      ..offset = offset
+      ..cacheExtent = cacheExtent;
   }
 
   @override
   _ViewportElement createElement() => new _ViewportElement(this);
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new EnumProperty<AxisDirection>('axisDirection', axisDirection));
-    description.add(new EnumProperty<AxisDirection>('crossAxisDirection', crossAxisDirection, defaultValue: null));
-    description.add(new DoubleProperty('anchor', anchor));
-    description.add(new DiagnosticsProperty<ViewportOffset>('offset', offset));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new EnumProperty<AxisDirection>('axisDirection', axisDirection));
+    properties.add(new EnumProperty<AxisDirection>('crossAxisDirection', crossAxisDirection, defaultValue: null));
+    properties.add(new DoubleProperty('anchor', anchor));
+    properties.add(new DiagnosticsProperty<ViewportOffset>('offset', offset));
     if (center != null) {
-      description.add(new DiagnosticsProperty<Key>('center', center));
+      properties.add(new DiagnosticsProperty<Key>('center', center));
     } else if (children.isNotEmpty && children.first.key != null) {
-      description.add(new DiagnosticsProperty<Key>('center', children.first.key, tooltip: 'implicit'));
+      properties.add(new DiagnosticsProperty<Key>('center', children.first.key, tooltip: 'implicit'));
     }
   }
 }
@@ -199,6 +204,14 @@ class _ViewportElement extends MultiChildRenderObjectElement {
     } else {
       renderObject.center = null;
     }
+  }
+
+  @override
+  void debugVisitOnstageChildren(ElementVisitor visitor) {
+    children.where((Element e) {
+      final RenderSliver renderSliver = e.renderObject;
+      return renderSliver.geometry.visible;
+    }).forEach(visitor);
   }
 }
 
@@ -290,10 +303,10 @@ class ShrinkWrappingViewport extends MultiChildRenderObjectWidget {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new EnumProperty<AxisDirection>('axisDirection', axisDirection));
-    description.add(new EnumProperty<AxisDirection>('crossAxisDirection', crossAxisDirection, defaultValue: null));
-    description.add(new DiagnosticsProperty<ViewportOffset>('offset', offset));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new EnumProperty<AxisDirection>('axisDirection', axisDirection));
+    properties.add(new EnumProperty<AxisDirection>('crossAxisDirection', crossAxisDirection, defaultValue: null));
+    properties.add(new DiagnosticsProperty<ViewportOffset>('offset', offset));
   }
 }

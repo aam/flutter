@@ -259,7 +259,7 @@ void main() {
   testWidgets('Transform.rotate', (WidgetTester tester) async {
     await tester.pumpWidget(
       new Transform.rotate(
-        angle: math.PI / 2.0,
+        angle: math.pi / 2.0,
         child: new Opacity(opacity: 0.5, child: new Container()),
       ),
     );
@@ -294,5 +294,43 @@ void main() {
       ),
     );
     expect(tester.getTopLeft(find.byType(Placeholder)), const Offset(30.0, 20.0));
+  });
+
+  testWidgets('Transform.translate', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      new Transform.translate(
+        offset: const Offset(100.0, 50.0),
+        child: new Opacity(opacity: 0.5, child: new Container()),
+      ),
+    );
+
+    // This should not cause a transform layer to be inserted.
+    final List<Layer> layers = tester.layers
+      ..retainWhere((Layer layer) => layer is TransformLayer);
+    expect(layers.length, 1); // only the render view
+    expect(tester.getTopLeft(find.byType(Container)), const Offset(100.0, 50.0));
+  });
+
+  testWidgets('Transform.scale', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      new Transform.scale(
+        scale: 2.0,
+        child: new Opacity(opacity: 0.5, child: new Container()),
+      ),
+    );
+
+    final List<Layer> layers = tester.layers
+      ..retainWhere((Layer layer) => layer is TransformLayer);
+    expect(layers.length, 2);
+    // The first transform is from the render view.
+    final TransformLayer layer = layers[1];
+    final Matrix4 transform = layer.transform;
+    expect(transform.storage, <dynamic>[
+      // These are column-major, not row-major.
+      2.0, 0.0, 0.0, 0.0,
+      0.0, 2.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      -400.0, -300.0, 0.0, 1.0, // it's 1600x1200, centered in an 800x600 square
+    ]);
   });
 }

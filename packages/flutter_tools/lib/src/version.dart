@@ -135,7 +135,7 @@ class FlutterVersion {
   /// In the absence of bugs and crashes a Flutter developer should never see
   /// this remote appear in their `git remote` list, but also if it happens to
   /// persist we do the proper clean-up for extra robustness.
-  static const String _kVersionCheckRemote = '__flutter_version_check__';
+  static const String _versionCheckRemote = '__flutter_version_check__';
 
   /// The date of the latest framework commit in the remote repository.
   ///
@@ -148,11 +148,11 @@ class FlutterVersion {
         'git',
         'remote',
         'add',
-        _kVersionCheckRemote,
+        _versionCheckRemote,
         'https://github.com/flutter/flutter.git',
       ]);
-      await _run(<String>['git', 'fetch', _kVersionCheckRemote, branch]);
-      return _latestGitCommitDate('$_kVersionCheckRemote/$branch');
+      await _run(<String>['git', 'fetch', _versionCheckRemote, branch]);
+      return _latestGitCommitDate('$_versionCheckRemote/$branch');
     } finally {
       await _removeVersionCheckRemoteIfExists();
     }
@@ -163,11 +163,11 @@ class FlutterVersion {
         .split('\n')
         .map((String name) => name.trim()) // to account for OS-specific line-breaks
         .toList();
-    if (remotes.contains(_kVersionCheckRemote))
-      await _run(<String>['git', 'remote', 'remove', _kVersionCheckRemote]);
+    if (remotes.contains(_versionCheckRemote))
+      await _run(<String>['git', 'remote', 'remove', _versionCheckRemote]);
   }
 
-  static FlutterVersion get instance => context.putIfAbsent(FlutterVersion, () => new FlutterVersion(const Clock()));
+  static FlutterVersion get instance => context[FlutterVersion];
 
   /// Return a short string for the version (e.g. `master/0.0.59-pre.92`, `scroll_refactor/a76bc8e22b`).
   String getVersionString({bool redactUnknownBranches: false}) {
@@ -336,11 +336,11 @@ class VersionCheckStamp {
     if (versionCheckStamp != null) {
       // Attempt to parse stamp JSON.
       try {
-        final dynamic json = JSON.decode(versionCheckStamp);
-        if (json is Map) {
-          return fromJson(json);
+        final dynamic jsonObject = json.decode(versionCheckStamp);
+        if (jsonObject is Map) {
+          return fromJson(jsonObject);
         } else {
-          printTrace('Warning: expected version stamp to be a Map but found: $json');
+          printTrace('Warning: expected version stamp to be a Map but found: $jsonObject');
         }
       } catch (error, stackTrace) {
         // Do not crash if JSON is malformed.
@@ -352,10 +352,10 @@ class VersionCheckStamp {
     return const VersionCheckStamp();
   }
 
-  static VersionCheckStamp fromJson(Map<String, String> json) {
+  static VersionCheckStamp fromJson(Map<String, String> jsonObject) {
     DateTime readDateTime(String property) {
-      return json.containsKey(property)
-        ? DateTime.parse(json[property])
+      return jsonObject.containsKey(property)
+        ? DateTime.parse(jsonObject[property])
         : null;
     }
 
@@ -499,6 +499,7 @@ class GitTagVersion {
       return const GitTagVersion.unknown();
     }
     final List<int> parsedParts = parts.take(4).map<int>(
+      // ignore: deprecated_member_use
       (String value) => int.parse(value, onError: (String value) => null),
     ).toList();
     return new GitTagVersion(parsedParts[0], parsedParts[1], parsedParts[2], parsedParts[3], parts[4]);

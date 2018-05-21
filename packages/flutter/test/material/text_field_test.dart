@@ -4,7 +4,6 @@
 
 import 'dart:async';
 import 'dart:io' show Platform;
-import 'dart:ui' show SemanticsFlag;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -587,7 +586,7 @@ void main() {
       ),
     );
 
-    final String testValue = kThreeLines;
+    const String testValue = kThreeLines;
     const String cutValue = 'First line of stuff ';
     await tester.enterText(find.byType(TextField), testValue);
     await skipPastScrollingAnimation(tester);
@@ -1169,7 +1168,7 @@ void main() {
       ),
     );
     final double iconRight = tester.getTopRight(find.byType(Icon)).dx;
-    // Per https://material.io/guidelines/components/text-fields.html#text-fields-layout
+    // Per https://material.io/go/design-text-fields#text-fields-layout
     // There's a 16 dps gap between the right edge of the icon and the text field's
     // container, and the 12dps more padding between the left edge of the container
     // and the left edge of the input and label.
@@ -1675,6 +1674,8 @@ void main() {
     );
 
     expect(semantics, includesNodeWith(flags: <SemanticsFlag>[SemanticsFlag.isTextField]));
+
+    semantics.dispose();
   });
 
   testWidgets('Caret works when maxLines is null', (WidgetTester tester) async {
@@ -1771,7 +1772,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           textDirection: TextDirection.ltr,
           actions: <SemanticsAction>[
             SemanticsAction.tap,
@@ -1789,7 +1790,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           textDirection: TextDirection.ltr,
           value: 'Guten Tag',
           actions: <SemanticsAction>[
@@ -1808,7 +1809,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           textDirection: TextDirection.ltr,
           value: 'Guten Tag',
           textSelection: const TextSelection.collapsed(offset: 9),
@@ -1832,7 +1833,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           textDirection: TextDirection.ltr,
           textSelection: const TextSelection.collapsed(offset: 4),
           value: 'Guten Tag',
@@ -1858,7 +1859,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           textDirection: TextDirection.ltr,
           textSelection: const TextSelection.collapsed(offset: 0),
           value: 'Schönen Feierabend',
@@ -1897,7 +1898,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           value: 'Hello',
           textDirection: TextDirection.ltr,
           actions: <SemanticsAction>[
@@ -1917,7 +1918,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           value: 'Hello',
           textSelection: const TextSelection.collapsed(offset: 5),
           textDirection: TextDirection.ltr,
@@ -1941,7 +1942,7 @@ void main() {
     expect(semantics, hasSemantics(new TestSemantics.root(
       children: <TestSemantics>[
         new TestSemantics.rootChild(
-          id: 2,
+          id: 1,
           value: 'Hello',
           textSelection: const TextSelection(baseOffset: 5, extentOffset: 3),
           textDirection: TextDirection.ltr,
@@ -1985,7 +1986,7 @@ void main() {
     await tester.tap(find.byKey(key));
     await tester.pump();
 
-    const int inputFieldId = 2;
+    const int inputFieldId = 1;
 
     expect(controller.selection, const TextSelection.collapsed(offset: 5, affinity: TextAffinity.upstream));
     expect(semantics, hasSemantics(new TestSemantics.root(
@@ -2058,5 +2059,13 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('TextField throws when not descended from a Material widget', (WidgetTester tester) async {
+    const Widget textField = const TextField();
+    await tester.pumpWidget(textField);
+    final dynamic exception = tester.takeException();
+    expect(exception, isFlutterError);
+    expect(exception.toString(), startsWith('No Material widget found.'));
+    expect(exception.toString(), endsWith(':\n  $textField\nThe ancestors of this widget were:\n  [root]'));
+  });
 
 }

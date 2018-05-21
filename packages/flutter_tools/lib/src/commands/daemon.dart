@@ -24,6 +24,7 @@ import '../resident_runner.dart';
 import '../run_cold.dart';
 import '../run_hot.dart';
 import '../runner/flutter_command.dart';
+import '../tester/flutter_tester.dart';
 import '../vmservice.dart';
 
 const String protocolVersion = '0.2.0';
@@ -50,21 +51,24 @@ class DaemonCommand extends FlutterCommand {
   Future<Null> runCommand() {
     printStatus('Starting device daemon...');
 
-    final AppContext appContext = new AppContext();
     final NotifyingLogger notifyingLogger = new NotifyingLogger();
-    appContext.setVariable(Logger, notifyingLogger);
 
     Cache.releaseLockEarly();
 
-    return appContext.runInZone(() async {
-      final Daemon daemon = new Daemon(
-          stdinCommandStream, stdoutCommandResponse,
-          daemonCommand: this, notifyingLogger: notifyingLogger);
+    return context.run<Null>(
+      body: () async {
+        final Daemon daemon = new Daemon(
+            stdinCommandStream, stdoutCommandResponse,
+            daemonCommand: this, notifyingLogger: notifyingLogger);
 
-      final int code = await daemon.onExit;
-      if (code != 0)
-        throwToolExit('Daemon exited with non-zero exit code: $code', exitCode: code);
-    });
+        final int code = await daemon.onExit;
+        if (code != 0)
+          throwToolExit('Daemon exited with non-zero exit code: $code', exitCode: code);
+      },
+      overrides: <Type, Generator>{
+        Logger: () => notifyingLogger,
+      },
+    );
   }
 }
 
@@ -567,6 +571,7 @@ class DeviceDomain extends Domain {
     addDeviceDiscoverer(new AndroidDevices());
     addDeviceDiscoverer(new IOSDevices());
     addDeviceDiscoverer(new IOSSimulators());
+    addDeviceDiscoverer(new FlutterTesterDevices());
   }
 
   void addDeviceDiscoverer(PollingDeviceDiscovery discoverer) {
@@ -693,12 +698,12 @@ class DeviceDomain extends Domain {
 }
 
 Stream<Map<String, dynamic>> get stdinCommandStream => stdin
-  .transform(UTF8.decoder)
+  .transform(utf8.decoder)
   .transform(const LineSplitter())
   .where((String line) => line.startsWith('[{') && line.endsWith('}]'))
   .map((String line) {
     line = line.substring(1, line.length - 1);
-    return JSON.decode(line);
+    return json.decode(line);
   });
 
 void stdoutCommandResponse(Map<String, dynamic> command) {
@@ -706,7 +711,7 @@ void stdoutCommandResponse(Map<String, dynamic> command) {
 }
 
 String jsonEncodeObject(dynamic object) {
-  return JSON.encode(object, toEncodable: _toEncodable);
+  return json.encode(object, toEncodable: _toEncodable);
 }
 
 dynamic _toEncodable(dynamic object) {
@@ -810,9 +815,12 @@ class AppInstance {
   dynamic _runInZone(AppDomain domain, dynamic method()) {
     _logger ??= new _AppRunLogger(domain, this, parent: logToStdout ? logger : null);
 
-    final AppContext appContext = new AppContext();
-    appContext.setVariable(Logger, _logger);
-    return appContext.runInZone(method);
+    return context.run<dynamic>(
+      body: method,
+      overrides: <Type, Generator>{
+        Logger: () => _logger,
+      },
+    );
   }
 }
 

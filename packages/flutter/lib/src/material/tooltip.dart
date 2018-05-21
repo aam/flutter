@@ -4,7 +4,6 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -92,11 +91,11 @@ class Tooltip extends StatefulWidget {
   _TooltipState createState() => new _TooltipState();
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new StringProperty('message', message, showName: false));
-    description.add(new DoubleProperty('vertical offset', verticalOffset));
-    description.add(new FlagProperty('position', value: preferBelow, ifTrue: 'below', ifFalse: 'above', showName: true));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new StringProperty('message', message, showName: false));
+    properties.add(new DoubleProperty('vertical offset', verticalOffset));
+    properties.add(new FlagProperty('position', value: preferBelow, ifTrue: 'below', ifFalse: 'above', showName: true));
   }
 }
 
@@ -147,6 +146,7 @@ class _TooltipState extends State<Tooltip> with SingleTickerProviderStateMixin {
     _entry = new OverlayEntry(builder: (BuildContext context) => overlay);
     Overlay.of(context, debugRequiredFor: widget).insert(_entry);
     GestureBinding.instance.pointerRouter.addGlobalRoute(_handlePointerEvent);
+    SemanticsService.tooltip(widget.message);
     _controller.forward();
     return true;
   }

@@ -12,8 +12,7 @@ import '../base/version.dart';
 import '../globals.dart';
 import '../ios/plist_utils.dart';
 
-AndroidStudio get androidStudio =>
-    context.putIfAbsent(AndroidStudio, AndroidStudio.latestValid);
+AndroidStudio get androidStudio => context[AndroidStudio];
 
 // Android Studio layout:
 
@@ -39,6 +38,7 @@ class AndroidStudio implements Comparable<AndroidStudio> {
   final Version version;
   final String configured;
 
+  String _pluginsPath;
   String _javaPath;
   bool _isValid = false;
   final List<String> _validationMessages = <String>[];
@@ -81,6 +81,26 @@ class AndroidStudio implements Comparable<AndroidStudio> {
   String get javaPath => _javaPath;
 
   bool get isValid => _isValid;
+
+  String get pluginsPath {
+    if (_pluginsPath == null) {
+      final int major = version.major;
+      final int minor = version.minor;
+      if (platform.isMacOS) {
+        _pluginsPath = fs.path.join(
+            homeDirPath,
+            'Library',
+            'Application Support',
+            'AndroidStudio$major.$minor');
+      } else {
+        _pluginsPath = fs.path.join(homeDirPath,
+            '.AndroidStudio$major.$minor',
+            'config',
+            'plugins');
+      }
+    }
+    return _pluginsPath;
+  }
 
   List<String> get validationMessages => _validationMessages;
 

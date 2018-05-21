@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -12,16 +13,16 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart' as http;
 import 'package:quiver/testing/async.dart';
 import 'package:quiver/time.dart';
 import 'package:test/test.dart' as test_package;
 import 'package:stack_trace/stack_trace.dart' as stack_trace;
 import 'package:vector_math/vector_math_64.dart';
 
+import 'goldens.dart';
 import 'stack_manipulation.dart';
 import 'test_async_utils.dart';
+import 'test_exception_reporter.dart';
 import 'test_text_input.dart';
 
 /// Phases that can be reached by [WidgetTester.pumpWidget] and
@@ -96,6 +97,7 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
   /// [debugPrintOverride], which can be overridden by subclasses.
   TestWidgetsFlutterBinding() {
     debugPrint = debugPrintOverride;
+    debugDisableShadows = disableShadows;
     debugCheckIntrinsicSizes = checkIntrinsicSizes;
   }
 
@@ -107,6 +109,15 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
   /// synchronous, disabling its normal throttling behavior.
   @protected
   DebugPrintCallback get debugPrintOverride => debugPrint;
+
+  /// The value to set [debugDisableShadows] to while tests are running.
+  ///
+  /// This can be used to reduce the likelihood of golden file tests being
+  /// flaky, because shadow rendering is not always deterministic. The
+  /// [AutomatedTestWidgetsFlutterBinding] sets this to true, so that all tests
+  /// always run with shadows disabled.
+  @protected
+  bool get disableShadows => false;
 
   /// The value to set [debugCheckIntrinsicSizes] to while tests are running.
   ///
@@ -140,13 +151,7 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
   @override
   void initInstances() {
     timeDilation = 1.0; // just in case the developer has artificially changed it for development
-    createHttpClient = () {
-      return new http.MockClient((http.BaseRequest request) {
-        return new Future<http.Response>.value(
-          new http.Response('Mocked: Unavailable.', 404, request: request)
-        );
-      });
-    };
+    HttpOverrides.global = new _MockHttpOverrides();
     _testTextInput = new TestTextInput()..register();
     super.initInstances();
   }
@@ -188,6 +193,25 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
   /// See also [LiveTestWidgetsFlutterBindingFramePolicy], which affects how
   /// this method works when the test is run with `flutter run`.
   Future<Null> pump([ Duration duration, EnginePhase newPhase = EnginePhase.sendSemanticsUpdate ]);
+
+  /// Runs a [callback] that performs real asynchronous work.
+  ///
+  /// This is intended for callers who need to call asynchronous methods where
+  /// the methods spawn isolates or OS threads and thus cannot be executed
+  /// synchronously by calling [pump].
+  ///
+  /// If [callback] completes successfully, this will return the future
+  /// returned by [callback].
+  ///
+  /// If [callback] completes with an error, the error will be caught by the
+  /// Flutter framework and made available via [takeException], and this method
+  /// will return a future that completes will `null`.
+  ///
+  /// Re-entrant calls to this method are not allowed; callers of this method
+  /// are required to wait for the returned future to complete before calling
+  /// this method again. Attempts to do otherwise will result in a
+  /// [TestFailure] error being thrown.
+  Future<T> runAsync<T>(Future<T> callback());
 
   /// Artificially calls dispatchLocaleChanged on the Widget binding,
   /// then flushes microtasks.
@@ -274,23 +298,23 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
   FlutterExceptionHandler _oldExceptionHandler;
   FlutterErrorDetails _pendingExceptionDetails;
 
-  static const TextStyle _kMessageStyle = const TextStyle(
+  static const TextStyle _messageStyle = const TextStyle(
     color: const Color(0xFF917FFF),
     fontSize: 40.0,
   );
 
-  static const Widget _kPreTestMessage = const Center(
+  static const Widget _preTestMessage = const Center(
     child: const Text(
       'Test starting...',
-      style: _kMessageStyle,
+      style: _messageStyle,
       textDirection: TextDirection.ltr,
     )
   );
 
-  static const Widget _kPostTestMessage = const Center(
+  static const Widget _postTestMessage = const Center(
     child: const Text(
       'Test finished.',
-      style: _kMessageStyle,
+      style: _messageStyle,
       textDirection: TextDirection.ltr,
     )
   );
@@ -335,16 +359,7 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
     assert(_currentTestCompleter != null);
     if (_pendingExceptionDetails != null) {
       debugPrint = debugPrintOverride; // just in case the test overrides it -- otherwise we won't see the error!
-      FlutterError.dumpErrorToConsole(_pendingExceptionDetails, forceReport: true);
-      // test_package.registerException actually just calls the current zone's error handler (that
-      // is to say, _parentZone's handleUncaughtError function). FakeAsync doesn't add one of those,
-      // but the test package does, that's how the test package tracks errors. So really we could
-      // get the same effect here by calling that error handler directly or indeed just throwing.
-      // However, we call registerException because that's the semantically correct thing...
-      String additional = '';
-      if (_currentTestDescription != '')
-        additional = '\nThe test description was: $_currentTestDescription';
-      test_package.registerException('Test failed. See exception logs above.$additional', _emptyStackTrace);
+      reportTestException(_pendingExceptionDetails, _currentTestDescription);
       _pendingExceptionDetails = null;
     }
     _currentTestDescription = null;
@@ -477,8 +492,11 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
   Future<Null> _runTestBody(Future<Null> testBody(), VoidCallback invariantTester) async {
     assert(inTest);
 
-    runApp(new Container(key: new UniqueKey(), child: _kPreTestMessage)); // Reset the tree to a known state.
+    runApp(new Container(key: new UniqueKey(), child: _preTestMessage)); // Reset the tree to a known state.
     await pump();
+
+    final bool autoUpdateGoldensBeforeTest = autoUpdateGoldenFiles;
+    final TestExceptionReporter reportTestExceptionBeforeTest = reportTestException;
 
     // run the test
     await testBody();
@@ -488,9 +506,11 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
       // We only try to clean up and verify invariants if we didn't already
       // fail. If we got an exception already, then we instead leave everything
       // alone so that we don't cause more spurious errors.
-      runApp(new Container(key: new UniqueKey(), child: _kPostTestMessage)); // Unmount any remaining widgets.
+      runApp(new Container(key: new UniqueKey(), child: _postTestMessage)); // Unmount any remaining widgets.
       await pump();
       invariantTester();
+      _verifyAutoUpdateGoldensUnset(autoUpdateGoldensBeforeTest);
+      _verifyReportTestExceptionUnset(reportTestExceptionBeforeTest);
       _verifyInvariants();
     }
 
@@ -509,6 +529,10 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
     assert(debugAssertAllGesturesVarsUnset(
       'The value of a gestures debug variable was changed by the test.',
     ));
+    assert(debugAssertAllPaintingVarsUnset(
+      'The value of a painting debug variable was changed by the test.',
+      debugDisableShadowsOverride: disableShadows,
+    ));
     assert(debugAssertAllRenderVarsUnset(
       'The value of a rendering debug variable was changed by the test.',
       debugCheckIntrinsicSizesOverride: checkIntrinsicSizes,
@@ -519,6 +543,41 @@ abstract class TestWidgetsFlutterBinding extends BindingBase
     assert(debugAssertAllSchedulerVarsUnset(
       'The value of a scheduler debug variable was changed by the test.',
     ));
+  }
+
+  void _verifyAutoUpdateGoldensUnset(bool valueBeforeTest) {
+    assert(() {
+      if (autoUpdateGoldenFiles != valueBeforeTest) {
+        FlutterError.reportError(new FlutterErrorDetails(
+          exception: new FlutterError(
+              'The value of autoUpdateGoldenFiles was changed by the test.',
+          ),
+          stack: StackTrace.current,
+          library: 'Flutter test framework',
+        ));
+      }
+      return true;
+    }());
+  }
+
+  void _verifyReportTestExceptionUnset(TestExceptionReporter valueBeforeTest) {
+    assert(() {
+      if (reportTestException != valueBeforeTest) {
+        // We can't report this error to their modified reporter because we
+        // can't be guaranteed that their reporter will cause the test to fail.
+        // So we reset the error reporter to its initial value and then report
+        // this error.
+        reportTestException = valueBeforeTest;
+        FlutterError.reportError(new FlutterErrorDetails(
+          exception: new FlutterError(
+            'The value of reportTestException was changed by the test.',
+          ),
+          stack: StackTrace.current,
+          library: 'Flutter test framework',
+        ));
+      }
+      return true;
+    }());
   }
 
   /// Called by the [testWidgets] function after a test is executed.
@@ -548,6 +607,7 @@ class AutomatedTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
   }
 
   FakeAsync _fakeAsync;
+  Completer<void> _pendingAsyncTasks;
 
   @override
   Clock get clock => _clock;
@@ -555,6 +615,9 @@ class AutomatedTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
 
   @override
   DebugPrintCallback get debugPrintOverride => debugPrintSynchronously;
+
+  @override
+  bool get disableShadows => true;
 
   @override
   bool get checkIntrinsicSizes => true;
@@ -586,6 +649,55 @@ class AutomatedTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
       }
       _fakeAsync.flushMicrotasks();
       return new Future<Null>.value();
+    });
+  }
+
+  @override
+  Future<T> runAsync<T>(Future<T> callback()) {
+    assert(() {
+      if (_pendingAsyncTasks == null)
+        return true;
+      throw new test_package.TestFailure(
+          'Reentrant call to runAsync() denied.\n'
+          'runAsync() was called, then before its future completed, it '
+          'was called again. You must wait for the first returned future '
+          'to complete before calling runAsync() again.'
+      );
+    }());
+
+    final Zone realAsyncZone = Zone.current.fork(
+      specification: new ZoneSpecification(
+        scheduleMicrotask: (Zone self, ZoneDelegate parent, Zone zone, void f()) {
+          Zone.root.scheduleMicrotask(f);
+        },
+        createTimer: (Zone self, ZoneDelegate parent, Zone zone, Duration duration, void f()) {
+          return Zone.root.createTimer(duration, f);
+        },
+        createPeriodicTimer: (Zone self, ZoneDelegate parent, Zone zone, Duration period, void f(Timer timer)) {
+          return Zone.root.createPeriodicTimer(period, f);
+        },
+      ),
+    );
+
+    return realAsyncZone.run(() {
+      _pendingAsyncTasks = new Completer<void>();
+      return callback().catchError((dynamic exception, StackTrace stack) {
+        FlutterError.reportError(new FlutterErrorDetails(
+          exception: exception,
+          stack: stack,
+          library: 'Flutter test framework',
+          context: 'while running async test code',
+        ));
+        return null;
+      }).whenComplete(() {
+        // We complete the _pendingAsyncTasks future successfully regardless of
+        // whether an exception occurred because in the case of an exception,
+        // we already reported the exception to FlutterError. Moreover,
+        // completing the future with an error would trigger an unhandled
+        // exception due to zone error boundaries.
+        _pendingAsyncTasks.complete();
+        _pendingAsyncTasks = null;
+      });
     });
   }
 
@@ -653,12 +765,22 @@ class AutomatedTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
       testBodyResult = _runTest(testBody, invariantTester, description);
       assert(inTest);
     });
-    // testBodyResult is a Future that was created in the Zone of the fakeAsync.
-    // This means that if we call .then() on it (as the test framework is about to),
-    // it will register a microtask to handle the future _in the fake async zone_.
-    // To avoid this, we wrap it in a Future that we've created _outside_ the fake
-    // async zone.
-    return new Future<Null>.value(testBodyResult);
+
+    return new Future<Null>.microtask(() async {
+      // Resolve interplay between fake async and real async calls.
+      _fakeAsync.flushMicrotasks();
+      while (_pendingAsyncTasks != null) {
+        await _pendingAsyncTasks.future;
+        _fakeAsync.flushMicrotasks();
+      }
+
+      // testBodyResult is a Future that was created in the Zone of the
+      // fakeAsync. This means that if we await it here, it will register a
+      // microtask to handle the future _in the fake async zone_. We avoid this
+      // by returning the wrapped microtask future that we've created _outside_
+      // the fake async zone.
+      return testBodyResult;
+    });
   }
 
   @override
@@ -766,6 +888,12 @@ enum LiveTestWidgetsFlutterBindingFramePolicy {
 /// anyway.)
 class LiveTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
   @override
+  void initInstances() {
+    super.initInstances();
+    assert(!autoUpdateGoldenFiles);
+  }
+
+  @override
   bool get inTest => _inTest;
   bool _inTest = false;
 
@@ -786,6 +914,7 @@ class LiveTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
   Completer<Null> _pendingFrame;
   bool _expectingFrame = false;
   bool _viewNeedsPaint = false;
+  bool _runningAsyncTasks = false;
 
   /// Whether to have [pump] with a duration only pump a single frame
   /// (as would happen in a normal test environment using
@@ -954,6 +1083,35 @@ class LiveTestWidgetsFlutterBinding extends TestWidgetsFlutterBinding {
       _pendingFrame = new Completer<Null>();
       return _pendingFrame.future;
     });
+  }
+
+  @override
+  Future<T> runAsync<T>(Future<T> callback()) async {
+    assert(() {
+      if (!_runningAsyncTasks)
+        return true;
+      throw new test_package.TestFailure(
+          'Reentrant call to runAsync() denied.\n'
+          'runAsync() was called, then before its future completed, it '
+          'was called again. You must wait for the first returned future '
+          'to complete before calling runAsync() again.'
+      );
+    }());
+
+    _runningAsyncTasks = true;
+    try {
+      return await callback();
+    } catch (error, stack) {
+      FlutterError.reportError(new FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'Flutter test framework',
+        context: 'while running async test code',
+      ));
+      return null;
+    } finally {
+      _runningAsyncTasks = false;
+    }
   }
 
   @override
@@ -1157,12 +1315,262 @@ class _LiveTestRenderView extends RenderView {
   }
 }
 
-final StackTrace _emptyStackTrace = new stack_trace.Chain(const <stack_trace.Trace>[]);
-
 StackTrace _unmangle(StackTrace stack) {
   if (stack is stack_trace.Trace)
     return stack.vmTrace;
   if (stack is stack_trace.Chain)
     return stack.toTrace().vmTrace;
   return stack;
+}
+
+/// Provides a default [HttpClient] which always returns empty 400 responses.
+///
+/// If another [HttpClient] is provided using [HttpOverrides.runZoned], that will
+/// take precedence over this provider.
+class _MockHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext _) {
+    return new _MockHttpClient();
+  }
+}
+
+/// A mocked [HttpClient] which always returns a [_MockHttpRequest].
+class _MockHttpClient implements HttpClient {
+  @override
+  bool autoUncompress;
+
+  @override
+  Duration idleTimeout;
+
+  @override
+  int maxConnectionsPerHost;
+
+  @override
+  String userAgent;
+
+  @override
+  void addCredentials(Uri url, String realm, HttpClientCredentials credentials) {}
+
+  @override
+  void addProxyCredentials(String host, int port, String realm, HttpClientCredentials credentials) {}
+
+  @override
+  set authenticate(Future<bool> Function(Uri url, String scheme, String realm) f) {}
+
+  @override
+  set authenticateProxy(Future<bool> Function(String host, int port, String scheme, String realm) f) {}
+
+  @override
+  set badCertificateCallback(bool Function(X509Certificate cert, String host, int port) callback) {}
+
+  @override
+  void close({bool force: false}) {}
+
+  @override
+  Future<HttpClientRequest> delete(String host, int port, String path) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> deleteUrl(Uri url) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  set findProxy(String Function(Uri url) f) {}
+
+  @override
+  Future<HttpClientRequest> get(String host, int port, String path) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> head(String host, int port, String path) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> headUrl(Uri url) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> open(String method, String host, int port, String path) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> patch(String host, int port, String path) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> patchUrl(Uri url) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> post(String host, int port, String path) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> postUrl(Uri url) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> put(String host, int port, String path) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+
+  @override
+  Future<HttpClientRequest> putUrl(Uri url) {
+    return new Future<HttpClientRequest>.value(new _MockHttpRequest());
+  }
+}
+
+/// A mocked [HttpClientRequest] which always returns a [_MockHttpClientResponse].
+class _MockHttpRequest extends HttpClientRequest {
+  @override
+  Encoding encoding;
+
+  @override
+  final HttpHeaders headers = new _MockHttpHeaders();
+
+  @override
+  void add(List<int> data) {}
+
+  @override
+  void addError(Object error, [StackTrace stackTrace]) {}
+
+  @override
+  Future<Null> addStream(Stream<List<int>> stream) {
+    return new Future<Null>.value(null);
+  }
+
+  @override
+  Future<HttpClientResponse> close() {
+    return new Future<HttpClientResponse>.value(new _MockHttpResponse());
+  }
+
+  @override
+  HttpConnectionInfo get connectionInfo => null;
+
+  @override
+  List<Cookie> get cookies => null;
+
+  @override
+  Future<HttpClientResponse> get done => null;
+
+  @override
+  Future<Null> flush() {
+    return new Future<Null>.value(null);
+  }
+
+  @override
+  String get method => null;
+
+  @override
+  Uri get uri => null;
+
+  @override
+  void write(Object obj) {}
+
+  @override
+  void writeAll(Iterable<Object> objects, [String separator = '']) {}
+
+  @override
+  void writeCharCode(int charCode) {}
+
+  @override
+  void writeln([Object obj = '']) {}
+}
+
+/// A mocked [HttpClientResponse] which is empty and has a [statusCode] of 400.
+class _MockHttpResponse extends Stream<List<int>> implements HttpClientResponse {
+  @override
+  final HttpHeaders headers = new _MockHttpHeaders();
+
+  @override
+  X509Certificate get certificate => null;
+
+  @override
+  HttpConnectionInfo get connectionInfo => null;
+
+  @override
+  int get contentLength => -1;
+
+  @override
+  List<Cookie> get cookies => null;
+
+  @override
+  Future<Socket> detachSocket() {
+    return new Future<Socket>.error(new UnsupportedError('Mocked response'));
+  }
+
+  @override
+  bool get isRedirect => false;
+
+  @override
+  StreamSubscription<List<int>> listen(void Function(List<int> event) onData, {Function onError, void Function() onDone, bool cancelOnError}) {
+    return const Stream<List<int>>.empty().listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
+  }
+
+  @override
+  bool get persistentConnection => null;
+
+  @override
+  String get reasonPhrase => null;
+
+  @override
+  Future<HttpClientResponse> redirect([String method, Uri url, bool followLoops]) {
+    return new Future<HttpClientResponse>.error(new UnsupportedError('Mocked response'));
+  }
+
+  @override
+  List<RedirectInfo> get redirects => <RedirectInfo>[];
+
+  @override
+  int get statusCode => 400;
+}
+
+/// A mocked [HttpHeaders] that ignores all writes.
+class _MockHttpHeaders extends HttpHeaders {
+  @override
+  List<String> operator [](String name) => <String>[];
+
+  @override
+  void add(String name, Object value) {}
+
+  @override
+  void clear() {}
+
+  @override
+  void forEach(void Function(String name, List<String> values) f) {}
+
+  @override
+  void noFolding(String name) {}
+
+  @override
+  void remove(String name, Object value) {}
+
+  @override
+  void removeAll(String name) {}
+
+  @override
+  void set(String name, Object value) {}
+
+  @override
+  String value(String name) => null;
 }

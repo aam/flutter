@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -22,7 +21,7 @@ import 'time.dart';
 import 'typography.dart';
 
 const Duration _kDialAnimateDuration = const Duration(milliseconds: 200);
-const double _kTwoPi = 2 * math.PI;
+const double _kTwoPi = 2 * math.pi;
 const Duration _kVibrateCommitDelay = const Duration(milliseconds: 100);
 
 enum _TimePickerMode { hour, minute }
@@ -861,7 +860,7 @@ class _DialPainter extends CustomPainter {
       if (labels == null)
         return;
       final double labelThetaIncrement = -_kTwoPi / labels.length;
-      double labelTheta = math.PI / 2.0;
+      double labelTheta = math.pi / 2.0;
 
       for (_TappableLabel label in labels) {
         final TextPainter labelPainter = label.painter;
@@ -877,7 +876,7 @@ class _DialPainter extends CustomPainter {
     final Paint selectorPaint = new Paint()
       ..color = accentColor;
     final Offset focusedPoint = getOffsetForTheta(theta, activeRing);
-    final double focusedRadius = labelPadding - 4.0;
+    const double focusedRadius = labelPadding - 4.0;
     canvas.drawCircle(centerPoint, 4.0, selectorPaint);
     canvas.drawCircle(focusedPoint, focusedRadius, selectorPaint);
     selectorPaint.strokeWidth = 2.0;
@@ -894,7 +893,7 @@ class _DialPainter extends CustomPainter {
     canvas.restore();
   }
 
-  static const double _kSemanticNodeSizeScale = 1.5;
+  static const double _semanticNodeSizeScale = 1.5;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => _buildSemantics;
@@ -902,7 +901,7 @@ class _DialPainter extends CustomPainter {
   /// Creates semantics nodes for the hour/minute labels painted on the dial.
   ///
   /// The nodes are positioned on top of the text and their size is
-  /// [_kSemanticNodeSizeScale] bigger than those of the text boxes to provide
+  /// [_semanticNodeSizeScale] bigger than those of the text boxes to provide
   /// bigger tap area.
   List<CustomPainterSemantics> _buildSemantics(Size size) {
     final double radius = size.shortestSide / 2.0;
@@ -931,12 +930,12 @@ class _DialPainter extends CustomPainter {
       if (labels == null)
         return;
       final double labelThetaIncrement = -_kTwoPi / labels.length;
-      double labelTheta = math.PI / 2.0;
+      double labelTheta = math.pi / 2.0;
 
       for (_TappableLabel label in labels) {
         final TextPainter labelPainter = label.painter;
-        final double width = labelPainter.width * _kSemanticNodeSizeScale;
-        final double height = labelPainter.height * _kSemanticNodeSizeScale;
+        final double width = labelPainter.width * _semanticNodeSizeScale;
+        final double height = labelPainter.height * _semanticNodeSizeScale;
         final Offset nodeOffset = getOffsetForTheta(labelTheta, ring) + new Offset(-width / 2.0, -height / 2.0);
         final CustomPainterSemantics node = new CustomPainterSemantics(
           rect: new Rect.fromLTRB(
@@ -1078,7 +1077,7 @@ class _DialState extends State<_Dial> with SingleTickerProviderStateMixin {
     final double fraction = widget.mode == _TimePickerMode.hour
       ? (time.hour / TimeOfDay.hoursPerPeriod) % TimeOfDay.hoursPerPeriod
       : (time.minute / TimeOfDay.minutesPerHour) % TimeOfDay.minutesPerHour;
-    return (math.PI / 2.0 - fraction * _kTwoPi) % _kTwoPi;
+    return (math.pi / 2.0 - fraction * _kTwoPi) % _kTwoPi;
   }
 
   TimeOfDay _getTimeForTheta(double theta) {
@@ -1115,7 +1114,7 @@ class _DialState extends State<_Dial> with SingleTickerProviderStateMixin {
   void _updateThetaForPan() {
     setState(() {
       final Offset offset = _position - _center;
-      final double angle = (math.atan2(offset.dx, offset.dy) - math.PI / 2.0) % _kTwoPi;
+      final double angle = (math.atan2(offset.dx, offset.dy) - math.pi / 2.0) % _kTwoPi;
       _thetaTween
         ..begin = angle
         ..end = angle; // The controller doesn't animate during the pan gesture.
@@ -1523,6 +1522,7 @@ class _TimePickerDialogState extends State<_TimePickerDialog> {
     final MediaQueryData media = MediaQuery.of(context);
     final TimeOfDayFormat timeOfDayFormat = localizations.timeOfDayFormat(alwaysUse24HourFormat: media.alwaysUse24HourFormat);
     final bool use24HourDials = hourFormat(of: timeOfDayFormat) != HourFormat.h;
+    final ThemeData theme = Theme.of(context);
 
     final Widget picker = new Padding(
       padding: const EdgeInsets.all(16.0),
@@ -1552,7 +1552,7 @@ class _TimePickerDialogState extends State<_TimePickerDialog> {
       )
     );
 
-    return new Dialog(
+    final Dialog dialog = new Dialog(
       child: new OrientationBuilder(
         builder: (BuildContext context, Orientation orientation) {
           final Widget header = new _TimePickerHeader(
@@ -1562,6 +1562,17 @@ class _TimePickerDialogState extends State<_TimePickerDialog> {
             onModeChanged: _handleModeChanged,
             onChanged: _handleTimeChanged,
             use24HourDials: use24HourDials,
+          );
+
+          final Widget pickerAndActions = new Container(
+            color: theme.dialogBackgroundColor,
+            child: new Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                new Expanded(child: picker), // picker grows and shrinks with the available space
+                actions,
+              ],
+            ),
           );
 
           assert(orientation != null);
@@ -1575,8 +1586,9 @@ class _TimePickerDialogState extends State<_TimePickerDialog> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     header,
-                    new Expanded(child: picker),
-                    actions,
+                    new Expanded(
+                      child: pickerAndActions,
+                    ),
                   ]
                 )
               );
@@ -1590,12 +1602,7 @@ class _TimePickerDialogState extends State<_TimePickerDialog> {
                   children: <Widget>[
                     header,
                     new Flexible(
-                      child: new Column(
-                        children: <Widget>[
-                          new Expanded(child: picker),
-                          actions,
-                        ]
-                      )
+                      child: pickerAndActions,
                     ),
                   ]
                 )
@@ -1604,6 +1611,13 @@ class _TimePickerDialogState extends State<_TimePickerDialog> {
           return null;
         }
       )
+    );
+
+    return new Theme(
+      data: theme.copyWith(
+        dialogBackgroundColor: Colors.transparent,
+      ),
+      child: dialog,
     );
   }
 
@@ -1645,7 +1659,7 @@ Future<TimeOfDay> showTimePicker({
 
   return await showDialog<TimeOfDay>(
     context: context,
-    child: new _TimePickerDialog(initialTime: initialTime),
+    builder: (BuildContext context) => new _TimePickerDialog(initialTime: initialTime),
   );
 }
 

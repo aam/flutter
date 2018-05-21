@@ -196,15 +196,44 @@ class PopupMenuItem<T> extends PopupMenuEntry<T> {
   bool represents(T value) => value == this.value;
 
   @override
-  _PopupMenuItemState<PopupMenuItem<T>> createState() => new _PopupMenuItemState<PopupMenuItem<T>>();
+  PopupMenuItemState<T, PopupMenuItem<T>> createState() => new PopupMenuItemState<T, PopupMenuItem<T>>();
 }
 
-class _PopupMenuItemState<T extends PopupMenuItem<dynamic>> extends State<T> {
-  // Override this to put something else in the menu entry.
+/// The [State] for [PopupMenuItem] subclasses.
+///
+/// By default this implements the basic styling and layout of Material Design
+/// popup menu items.
+///
+/// The [buildChild] method can be overridden to adjust exactly what gets placed
+/// in the menu. By default it returns [PopupMenuItem.child].
+///
+/// The [handleTap] method can be overridden to adjust exactly what happens when
+/// the item is tapped. By default, it uses [Navigator.pop] to return the
+/// [PopupMenuItem.value] from the menu route.
+///
+/// This class takes two type arguments. The second, `W`, is the exact type of
+/// the [Widget] that is using this [State]. It must be a subclass of
+/// [PopupMenuItem]. The first, `T`, must match the type argument of that widget
+/// class, and is the type of values returned from this menu.
+class PopupMenuItemState<T, W extends PopupMenuItem<T>> extends State<W> {
+  /// The menu item contents.
+  ///
+  /// Used by the [build] method.
+  ///
+  /// By default, this returns [PopupMenuItem.child]. Override this to put
+  /// something else in the menu entry.
+  @protected
   Widget buildChild() => widget.child;
 
+  /// The handler for when the user selects the menu item.
+  ///
+  /// Used by the [InkWell] inserted by the [build] method.
+  ///
+  /// By default, uses [Navigator.pop] to return the [PopupMenuItem.value] from
+  /// the menu route.
+  @protected
   void handleTap() {
-    Navigator.pop(context, widget.value);
+    Navigator.pop<T>(context, widget.value);
   }
 
   @override
@@ -233,13 +262,11 @@ class _PopupMenuItemState<T extends PopupMenuItem<dynamic>> extends State<T> {
 
     return new InkWell(
       onTap: widget.enabled ? handleTap : null,
-      child: new MergeSemantics(
-        child: new Container(
-          height: widget.height,
-          padding: const EdgeInsets.symmetric(horizontal: _kMenuHorizontalPadding),
-          child: item,
-        )
-      )
+      child: new Container(
+        height: widget.height,
+        padding: const EdgeInsets.symmetric(horizontal: _kMenuHorizontalPadding),
+        child: item,
+      ),
     );
   }
 }
@@ -349,15 +376,15 @@ class CheckedPopupMenuItem<T> extends PopupMenuItem<T> {
   _CheckedPopupMenuItemState<T> createState() => new _CheckedPopupMenuItemState<T>();
 }
 
-class _CheckedPopupMenuItemState<T> extends _PopupMenuItemState<CheckedPopupMenuItem<T>> with SingleTickerProviderStateMixin {
-  static const Duration _kFadeDuration = const Duration(milliseconds: 150);
+class _CheckedPopupMenuItemState<T> extends PopupMenuItemState<T, CheckedPopupMenuItem<T>> with SingleTickerProviderStateMixin {
+  static const Duration _fadeDuration = const Duration(milliseconds: 150);
   AnimationController _controller;
   Animation<double> get _opacity => _controller.view;
 
   @override
   void initState() {
     super.initState();
-    _controller = new AnimationController(duration: _kFadeDuration, vsync: this)
+    _controller = new AnimationController(duration: _fadeDuration, vsync: this)
       ..value = widget.checked ? 1.0 : 0.0
       ..addListener(() => setState(() { /* animation changed */ }));
   }
@@ -388,10 +415,12 @@ class _CheckedPopupMenuItemState<T> extends _PopupMenuItemState<CheckedPopupMenu
 class _PopupMenu<T> extends StatelessWidget {
   const _PopupMenu({
     Key key,
-    this.route
+    this.route,
+    this.semanticLabel,
   }) : super(key: key);
 
   final _PopupMenuRoute<T> route;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -450,7 +479,13 @@ class _PopupMenu<T> extends StatelessWidget {
               alignment: AlignmentDirectional.topEnd,
               widthFactor: width.evaluate(route.animation),
               heightFactor: height.evaluate(route.animation),
-              child: child,
+              child: new Semantics(
+                scopesRoute: true,
+                namesRoute: true,
+                explicitChildNodes: true,
+                label: semanticLabel,
+                child: child,
+              ),
             ),
           ),
         );
@@ -548,6 +583,7 @@ class _PopupMenuRoute<T> extends PopupRoute<T> {
     this.elevation,
     this.theme,
     this.barrierLabel,
+    this.semanticLabel,
   });
 
   final RelativeRect position;
@@ -555,6 +591,7 @@ class _PopupMenuRoute<T> extends PopupRoute<T> {
   final dynamic initialValue;
   final double elevation;
   final ThemeData theme;
+  final String semanticLabel;
 
   @override
   Animation<double> createAnimation() {
@@ -591,7 +628,7 @@ class _PopupMenuRoute<T> extends PopupRoute<T> {
       }
     }
 
-    Widget menu = new _PopupMenu<T>(route: this);
+    Widget menu = new _PopupMenu<T>(route: this, semanticLabel: semanticLabel);
     if (theme != null)
       menu = new Theme(data: theme, child: menu);
 
@@ -651,7 +688,12 @@ class _PopupMenuRoute<T> extends PopupRoute<T> {
 /// The `context` argument is used to look up the [Navigator] and [Theme] for
 /// the menu. It is only used when the method is called. Its corresponding
 /// widget can be safely removed from the tree before the popup menu is closed.
-///
+/// 
+/// The `semanticLabel` argument is used by accessibility frameworks to 
+/// announce screen transitions when the menu is opened and closed. If this 
+/// label is not provided, it will default to 
+/// [MaterialLocalizations.popupMenuLabel].
+/// 
 /// See also:
 ///
 ///  * [PopupMenuItem], a popup menu entry for a single value.
@@ -659,20 +701,34 @@ class _PopupMenuRoute<T> extends PopupRoute<T> {
 ///  * [CheckedPopupMenuItem], a popup menu item with a checkmark.
 ///  * [PopupMenuButton], which provides an [IconButton] that shows a menu by
 ///    calling this method automatically.
+///  * [SemanticsConfiguration.namesRoute], for a description of edge triggered
+///    semantics.
 Future<T> showMenu<T>({
   @required BuildContext context,
   RelativeRect position,
   @required List<PopupMenuEntry<T>> items,
   T initialValue,
   double elevation: 8.0,
+  String semanticLabel,
 }) {
   assert(context != null);
   assert(items != null && items.isNotEmpty);
+  String label = semanticLabel;
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.iOS:
+      label = semanticLabel;
+      break;
+    case TargetPlatform.android:
+    case TargetPlatform.fuchsia:
+      label = semanticLabel ?? MaterialLocalizations.of(context)?.popupMenuLabel;
+  }
+
   return Navigator.push(context, new _PopupMenuRoute<T>(
     position: position,
     items: items,
     initialValue: initialValue,
     elevation: elevation,
+    semanticLabel: label,
     theme: Theme.of(context, shadowThemeOnly: true),
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
   ));

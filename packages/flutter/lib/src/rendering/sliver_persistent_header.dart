@@ -229,10 +229,10 @@ abstract class RenderSliverPersistentHeader extends RenderSliver with RenderObje
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DoubleProperty.lazy('maxExtent', () => maxExtent));
-    description.add(new DoubleProperty.lazy('child position', () => childMainAxisPosition(child)));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DoubleProperty.lazy('maxExtent', () => maxExtent));
+    properties.add(new DoubleProperty.lazy('child position', () => childMainAxisPosition(child)));
   }
 }
 
@@ -292,13 +292,15 @@ abstract class RenderSliverPinnedPersistentHeader extends RenderSliverPersistent
     final bool overlapsContent = constraints.overlap > 0.0;
     excludeFromSemanticsScrolling = overlapsContent || (constraints.scrollOffset > maxExtent - minExtent);
     layoutChild(constraints.scrollOffset, maxExtent, overlapsContent: overlapsContent);
+    final double layoutExtent = (maxExtent - constraints.scrollOffset).clamp(0.0, constraints.remainingPaintExtent);
     geometry = new SliverGeometry(
       scrollExtent: maxExtent,
       paintOrigin: constraints.overlap,
       paintExtent: math.min(childExtent, constraints.remainingPaintExtent),
-      layoutExtent: (maxExtent - constraints.scrollOffset).clamp(0.0, constraints.remainingPaintExtent),
+      layoutExtent: layoutExtent,
       maxPaintExtent: maxExtent,
       maxScrollObstructionExtent: minExtent,
+      cacheExtent: layoutExtent > 0.0 ? -constraints.cacheOrigin + layoutExtent : layoutExtent,
       hasVisualOverflow: true, // Conservatively say we do have overflow to avoid complexity.
     );
   }
@@ -488,9 +490,9 @@ abstract class RenderSliverFloatingPersistentHeader extends RenderSliverPersiste
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DoubleProperty('effective scroll offset', _effectiveScrollOffset));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DoubleProperty('effective scroll offset', _effectiveScrollOffset));
   }
 }
 

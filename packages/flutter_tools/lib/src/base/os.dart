@@ -11,7 +11,7 @@ import 'process.dart';
 import 'process_manager.dart';
 
 /// Returns [OperatingSystemUtils] active in the current app context (i.e. zone).
-OperatingSystemUtils get os => context.putIfAbsent(OperatingSystemUtils, () => new OperatingSystemUtils());
+OperatingSystemUtils get os => context[OperatingSystemUtils];
 
 abstract class OperatingSystemUtils {
   factory OperatingSystemUtils() {
@@ -91,7 +91,8 @@ class _PosixUtils extends OperatingSystemUtils {
     final ProcessResult result = processManager.runSync(command);
     if (result.exitCode != 0)
       return const <File>[];
-    return result.stdout.trim().split('\n').map((String path) => fs.file(path.trim())).toList();
+    final String stdout = result.stdout;
+    return stdout.trim().split('\n').map((String path) => fs.file(path.trim())).toList();
   }
 
   @override

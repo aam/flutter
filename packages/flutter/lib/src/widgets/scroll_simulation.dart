@@ -44,10 +44,10 @@ class BouncingScrollSimulation extends Simulation {
        super(tolerance: tolerance) {
     if (position < leadingExtent) {
       _springSimulation = _underscrollSimulation(position, velocity);
-      _springTime = double.NEGATIVE_INFINITY;
+      _springTime = double.negativeInfinity;
     } else if (position > trailingExtent) {
       _springSimulation = _overscrollSimulation(position, velocity);
-      _springTime = double.NEGATIVE_INFINITY;
+      _springTime = double.negativeInfinity;
     } else {
       _frictionSimulation = new FrictionSimulation(0.135, position, velocity);
       final double finalX = _frictionSimulation.finalX;
@@ -66,7 +66,7 @@ class BouncingScrollSimulation extends Simulation {
         );
         assert(_springTime.isFinite);
       } else {
-        _springTime = double.INFINITY;
+        _springTime = double.infinity;
       }
     }
     assert(_springTime != null);
@@ -145,10 +145,10 @@ class ClampingScrollSimulation extends Simulation {
     @required this.velocity,
     this.friction: 0.015,
     Tolerance tolerance: Tolerance.defaultTolerance,
-  }) : assert(_flingVelocityPenetration(0.0) == _kInitialVelocityPenetration),
+  }) : assert(_flingVelocityPenetration(0.0) == _initialVelocityPenetration),
        super(tolerance: tolerance) {
     _duration = _flingDuration(velocity);
-    _distance = (velocity * _duration / _kInitialVelocityPenetration).abs();
+    _distance = (velocity * _duration / _initialVelocityPenetration).abs();
   }
 
   /// The position of the particle at the beginning of the simulation.
@@ -191,7 +191,7 @@ class ClampingScrollSimulation extends Simulation {
   //
   // Algebra courtesy of Wolfram Alpha.
   //
-  // f(x) = scrollOffset, x is time in millseconds
+  // f(x) = scrollOffset, x is time in milliseconds
   // f(x) = 3.60882×10^-6 x^3 - 0.00668009 x^2 + 4.29427 x - 3.15307
   // f(x) = 3.60882×10^-6 x^3 - 0.00668009 x^2 + 4.29427 x, so f(0) is 0
   // f(686ms) = 961 pixels
@@ -200,14 +200,14 @@ class ClampingScrollSimulation extends Simulation {
   // Scale f(t) so that 0.0 <= f(t) <= 1.0
   // f(t) = (1165.03 t^3 - 3143.62 t^2 + 2945.87 t) / 961.0
   //      = 1.2 t^3 - 3.27 t^2 + 3.065 t
-  static const double _kInitialVelocityPenetration = 3.065;
+  static const double _initialVelocityPenetration = 3.065;
   static double _flingDistancePenetration(double t) {
-    return (1.2 * t * t * t) - (3.27 * t * t) + (_kInitialVelocityPenetration * t);
+    return (1.2 * t * t * t) - (3.27 * t * t) + (_initialVelocityPenetration * t);
   }
 
   // The derivative of the _flingDistancePenetration() function.
   static double _flingVelocityPenetration(double t) {
-    return (3.6 * t * t) - (6.54 * t) + _kInitialVelocityPenetration;
+    return (3.6 * t * t) - (6.54 * t) + _initialVelocityPenetration;
   }
 
   @override

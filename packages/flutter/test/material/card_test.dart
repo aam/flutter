@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:ui' show SemanticsFlag;
-
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -66,6 +64,53 @@ void main() {
     ));
 
     semantics.dispose();
+  });
+
+  testWidgets('Card margin', (WidgetTester tester) async {
+    const Key contentsKey = const ValueKey<String>('contents');
+
+    await tester.pumpWidget(
+      new Container(
+        alignment: Alignment.topLeft,
+        child: new Card(
+          child: new Container(
+            key: contentsKey,
+            color: const Color(0xFF00FF00),
+            width: 100.0,
+            height: 100.0,
+          ),
+        ),
+      ),
+    );
+
+    // Default margin is 4
+    expect(tester.getTopLeft(find.byType(Card)), const Offset(0.0, 0.0));
+    expect(tester.getSize(find.byType(Card)), const Size(108.0, 108.0));
+
+    expect(tester.getTopLeft(find.byKey(contentsKey)), const Offset(4.0, 4.0));
+    expect(tester.getSize(find.byKey(contentsKey)), const Size(100.0, 100.0));
+
+    await tester.pumpWidget(
+      new Container(
+        alignment: Alignment.topLeft,
+        child: new Card(
+          margin: EdgeInsets.zero,
+          child: new Container(
+            key: contentsKey,
+            color: const Color(0xFF00FF00),
+            width: 100.0,
+            height: 100.0,
+          ),
+        ),
+      ),
+    );
+
+    // Specified margin is zero
+    expect(tester.getTopLeft(find.byType(Card)), const Offset(0.0, 0.0));
+    expect(tester.getSize(find.byType(Card)), const Size(100.0, 100.0));
+
+    expect(tester.getTopLeft(find.byKey(contentsKey)), const Offset(0.0, 0.0));
+    expect(tester.getSize(find.byKey(contentsKey)), const Size(100.0, 100.0));
   });
 
 }

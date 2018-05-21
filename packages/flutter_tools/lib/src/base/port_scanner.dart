@@ -7,14 +7,9 @@ import 'dart:async';
 import 'context.dart';
 import 'io.dart';
 
-const PortScanner _kLocalPortScanner = const HostPortScanner();
 const int _kMaxSearchIterations = 20;
 
-PortScanner get portScanner {
-  return context == null
-      ? _kLocalPortScanner
-      : context.putIfAbsent(PortScanner, () => _kLocalPortScanner);
-}
+PortScanner get portScanner => context[PortScanner];
 
 abstract class PortScanner {
   const PortScanner();
@@ -51,7 +46,7 @@ class HostPortScanner extends PortScanner {
   Future<bool> isPortAvailable(int port) async {
     try {
       // TODO(ianh): This is super racy.
-      final ServerSocket socket = await ServerSocket.bind(InternetAddress.LOOPBACK_IP_V4, port);
+      final ServerSocket socket = await ServerSocket.bind(InternetAddress.LOOPBACK_IP_V4, port); // ignore: deprecated_member_use
       await socket.close();
       return true;
     } catch (error) {
@@ -63,9 +58,9 @@ class HostPortScanner extends PortScanner {
   Future<int> findAvailablePort() async {
     ServerSocket socket;
     try {
-      socket = await ServerSocket.bind(InternetAddress.LOOPBACK_IP_V4, 0);
+      socket = await ServerSocket.bind(InternetAddress.LOOPBACK_IP_V4, 0); // ignore: deprecated_member_use
     } on SocketException {
-      socket = await ServerSocket.bind(InternetAddress.LOOPBACK_IP_V6, 0, v6Only: true);
+      socket = await ServerSocket.bind(InternetAddress.LOOPBACK_IP_V6, 0, v6Only: true); // ignore: deprecated_member_use
     }
     final int port = socket.port;
     await socket.close();

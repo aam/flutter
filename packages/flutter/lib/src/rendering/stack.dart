@@ -77,6 +77,12 @@ class RelativeRect {
   /// May be negative if the bottom side of the rectangle is outside of the container.
   final double bottom;
 
+  /// Returns whether any of the values are greater than zero.
+  ///
+  /// This corresponds to one of the sides ([left], [top], [right], or [bottom]) having
+  /// some positive inset towards the center.
+  bool get hasInsets => left > 0.0 || top > 0.0 || right > 0.0 || bottom > 0.0;
+
   /// Returns a new rectangle object translated by the given offset.
   RelativeRect shift(Offset offset) {
     return new RelativeRect.fromLTRB(left + offset.dx, top + offset.dy, right - offset.dx, bottom - offset.dy);
@@ -480,6 +486,11 @@ class RenderStack extends RenderBox
     assert(_resolvedAlignment != null);
     _hasVisualOverflow = false;
     bool hasNonPositionedChildren = false;
+    if (childCount == 0) {
+      size = constraints.biggest;
+      assert(size.isFinite);
+      return;
+    }
 
     double width = constraints.minWidth;
     double height = constraints.minHeight;
@@ -606,12 +617,12 @@ class RenderStack extends RenderBox
   Rect describeApproximatePaintClip(RenderObject child) => _hasVisualOverflow ? Offset.zero & size : null;
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<AlignmentGeometry>('alignment', alignment));
-    description.add(new EnumProperty<TextDirection>('textDirection', textDirection));
-    description.add(new EnumProperty<StackFit>('fit', fit));
-    description.add(new EnumProperty<Overflow>('overflow', overflow));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<AlignmentGeometry>('alignment', alignment));
+    properties.add(new EnumProperty<TextDirection>('textDirection', textDirection));
+    properties.add(new EnumProperty<StackFit>('fit', fit));
+    properties.add(new EnumProperty<Overflow>('overflow', overflow));
   }
 }
 
@@ -685,8 +696,8 @@ class RenderIndexedStack extends RenderStack {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new IntProperty('index', index));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new IntProperty('index', index));
   }
 }

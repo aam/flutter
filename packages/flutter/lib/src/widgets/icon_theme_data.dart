@@ -34,7 +34,10 @@ class IconThemeData extends Diagnosticable {
   /// the new values.
   IconThemeData copyWith({Color color, double opacity, double size}) {
     return new IconThemeData(
-        color: color ?? this.color, opacity: opacity ?? this.opacity, size: size ?? this.size);
+      color: color ?? this.color,
+      opacity: opacity ?? this.opacity,
+      size: size ?? this.size,
+    );
   }
 
   /// Returns a new icon theme that matches this icon theme but with some values
@@ -43,7 +46,11 @@ class IconThemeData extends Diagnosticable {
   IconThemeData merge(IconThemeData other) {
     if (other == null)
       return this;
-    return copyWith(color: other.color, opacity: other.opacity, size: other.size);
+    return copyWith(
+      color: other.color,
+      opacity: other.opacity,
+      size: other.size,
+    );
   }
 
   /// Whether all the properties of this object are non-null.
@@ -95,13 +102,10 @@ class IconThemeData extends Diagnosticable {
   int get hashCode => hashValues(color, opacity, size);
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    if (color == null && _opacity == null && size == null) {
-      return;
-    }
-    description.add(new DiagnosticsProperty<Color>('color', color));
-    description.add(new DoubleProperty('opacity', _opacity));
-    description.add(new DoubleProperty('size', size));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Color>('color', color, defaultValue: null));
+    properties.add(new DoubleProperty('opacity', opacity, defaultValue: null));
+    properties.add(new DoubleProperty('size', size, defaultValue: null));
   }
 }

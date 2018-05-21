@@ -3,6 +3,9 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:meta/meta.dart';
 
 import '../android/android_sdk.dart';
 import '../artifacts.dart';
@@ -122,7 +125,7 @@ void handleKnownGradleExceptions(String exceptionString) {
   // Handle Gradle error thrown when Gradle needs to download additional
   // Android SDK components (e.g. Platform Tools), and the license
   // for that component has not been accepted.
-  final String matcher =
+  const String matcher =
     r'You have not accepted the license agreements of the following SDK components:'
     r'\s*\[(.+)\]';
   final RegExp licenseFailure = new RegExp(matcher, multiLine: true);
@@ -206,6 +209,9 @@ void updateLocalProperties({String projectPath, BuildInfo buildInfo}) {
     settings = new SettingsFile.parseFromFile(localProperties);
   } else {
     settings = new SettingsFile();
+    if (androidSdk == null) {
+      throwToolExit('Unable to locate Android SDK. Please run `flutter doctor` for more details.');
+    }
     settings.values['sdk.dir'] = escapePath(androidSdk.directory);
     changed = true;
   }
@@ -223,12 +229,81 @@ void updateLocalProperties({String projectPath, BuildInfo buildInfo}) {
     settings.writeContents(localProperties);
 }
 
+Future<Null> findAndReplaceVersionProperties({@required BuildInfo buildInfo}) {
+  assert(buildInfo != null, 'buildInfo can\'t be null');
+  final Completer<Null> completer = new Completer<Null>();
+
+  // early return, if nothing has to be changed
+  if (buildInfo.buildNumber == null && buildInfo.buildName == null) {
+    completer.complete();
+    return completer.future;
+  }
+
+  final File appGradle = fs.file(fs.path.join('android', 'app', 'build.gradle'));
+  final File appGradleTmp = fs.file(fs.path.join('android', 'app', 'build.gradle.tmp'));
+  appGradleTmp.createSync();
+
+  if (appGradle.existsSync() && appGradleTmp.existsSync()) {
+    final Stream<List<int>> inputStream = appGradle.openRead();
+    final IOSink sink = appGradleTmp.openWrite();
+
+    inputStream.transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .map((String line) {
+
+          // find and replace build number
+          if (buildInfo.buildNumber != null) {
+            if (line.contains(new RegExp(r'^[ |\t]*(versionCode)[ =\t]*\d*'))) {
+              return line.splitMapJoin(new RegExp(r'(versionCode)[ =\t]*\d*'), onMatch: (Match m) {
+                return 'versionCode ${buildInfo.buildNumber}';
+              });
+            }
+          }
+
+          // find and replace build name
+          if (buildInfo.buildName != null) {
+            if (line.contains(new RegExp(r'^[ |\t]*(versionName)[ =\t]*\"[0-9.]*"'))) {
+              return line.splitMapJoin(new RegExp(r'(versionName)[ =\t]*\"[0-9.]*"'), onMatch: (Match m) {
+                return 'versionName "${buildInfo.buildName}"';
+              });
+            }
+          }
+          return line;
+        })
+        .listen((String line) {
+            sink.writeln(line);
+          },
+          onDone: () {
+            sink.close();
+            try {
+              final File gradleOld = appGradle.renameSync(fs.path.join('android', 'app', 'build.gradle.old'));
+              appGradleTmp.renameSync(fs.path.join('android', 'app', 'build.gradle'));
+              gradleOld.deleteSync();
+              completer.complete();
+            } catch (error) {
+              printError('Failed to change version properties. $error');
+              completer.completeError('Failed to change version properties. $error');
+            }
+          },
+          onError: (dynamic error, StackTrace stack) {
+            printError('Failed to change version properties. ${error.toString()}');
+            sink.close();
+            appGradleTmp.deleteSync();
+            completer.completeError('Failed to change version properties. ${error.toString()}', stack);
+          },
+    );
+  }
+
+  return completer.future;
+}
+
 Future<Null> buildGradleProject(BuildInfo buildInfo, String target) async {
   // Update the local.properties file with the build mode.
   // FlutterPlugin v1 reads local.properties to determine build mode. Plugin v2
   // uses the standard Android way to determine what to build, but we still
   // update local.properties, in case we want to use it in the future.
   updateLocalProperties(buildInfo: buildInfo);
+  await findAndReplaceVersionProperties(buildInfo: buildInfo);
 
   final String gradle = await _ensureGradle();
 
@@ -258,8 +333,7 @@ Future<Null> _buildGradleProjectV1(String gradle) async {
   if (exitCode != 0)
     throwToolExit('Gradle build failed: $exitCode', exitCode: exitCode);
 
-  final File apkFile = fs.file(gradleAppOutV1);
-  printStatus('Built $gradleAppOutV1 (${getSizeAsMB(apkFile.lengthSync())}).');
+  printStatus('Built $gradleAppOutV1.');
 }
 
 Future<Null> _buildGradleProjectV2(String gradle, BuildInfo buildInfo, String target) async {
@@ -303,8 +377,14 @@ Future<Null> _buildGradleProjectV2(String gradle, BuildInfo buildInfo, String ta
       command.add('-Pextra-front-end-options=${buildInfo.extraFrontEndOptions}');
     if (buildInfo.extraGenSnapshotOptions != null)
       command.add('-Pextra-gen-snapshot-options=${buildInfo.extraGenSnapshotOptions}');
+    if (buildInfo.fileSystemRoots != null && buildInfo.fileSystemRoots.isNotEmpty)
+      command.add('-Pfilesystem-roots=${buildInfo.fileSystemRoots.join('|')}');
+    if (buildInfo.fileSystemScheme != null)
+      command.add('-Pfilesystem-scheme=${buildInfo.fileSystemScheme}');
+  } else {
+    command.add('-Ppreview-dart-2=false');
   }
-  if (buildInfo.preferSharedLibrary && androidSdk.ndkCompiler != null) {
+  if (buildInfo.preferSharedLibrary && androidSdk.ndk != null) {
     command.add('-Pprefer-shared-library=true');
   }
   if (buildInfo.targetPlatform == TargetPlatform.android_arm64)
@@ -333,7 +413,13 @@ Future<Null> _buildGradleProjectV2(String gradle, BuildInfo buildInfo, String ta
   final File apkShaFile = fs.file(fs.path.join(project.apkDirectory, 'app.apk.sha1'));
   apkShaFile.writeAsStringSync(calculateSha(apkFile));
 
-  printStatus('Built ${fs.path.relative(apkFile.path)} (${getSizeAsMB(apkFile.lengthSync())}).');
+  String appSize;
+  if (buildInfo.mode == BuildMode.debug) {
+    appSize = '';
+  } else {
+    appSize = ' (${getSizeAsMB(apkFile.lengthSync())})';
+  }
+  printStatus('Built ${fs.path.relative(apkFile.path)}$appSize.');
 }
 
 File _findApkFile(GradleProject project, BuildInfo buildInfo) {

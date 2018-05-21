@@ -198,6 +198,7 @@ void main() {
   });
 
   testWidgets('MergeableMaterial paints shadows', (WidgetTester tester) async {
+    debugDisableShadows = false;
     await tester.pumpWidget(
       new MaterialApp(
         home: new Scaffold(
@@ -226,6 +227,7 @@ void main() {
       find.byType(MergeableMaterial),
       paints..rrect(rrect: rrect, color: boxShadow.color, hasMaskFilter: true),
     );
+    debugDisableShadows = true;
   });
 
   testWidgets('MergeableMaterial merge gap', (WidgetTester tester) async {
@@ -381,7 +383,7 @@ void main() {
     matches(getBorderRadius(tester, 1), RadiusType.Round, RadiusType.Round);
   });
 
-  testWidgets('MergeableMaterial separate merge seaparate', (WidgetTester tester) async {
+  testWidgets('MergeableMaterial separate merge separate', (WidgetTester tester) async {
     await tester.pumpWidget(
       new MaterialApp(
         home: new Scaffold(

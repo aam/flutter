@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -229,7 +228,7 @@ void _tests() {
     await tester.pumpWidget(
       new Localizations(
         locale: const Locale('en', 'US'),
-        delegates: <LocalizationsDelegate<dynamic>>[
+        delegates: const <LocalizationsDelegate<dynamic>>[
           DefaultMaterialLocalizations.delegate,
           DefaultWidgetsLocalizations.delegate,
         ],
@@ -240,7 +239,7 @@ void _tests() {
               textDirection: TextDirection.ltr,
               child: new Navigator(
                 onGenerateRoute: (RouteSettings settings) {
-                  return new MaterialPageRoute<dynamic>(builder: (BuildContext context) {
+                  return new MaterialPageRoute<void>(builder: (BuildContext context) {
                     return new FlatButton(
                       onPressed: () {
                         showTimePicker(context: context, initialTime: initialTime);
@@ -457,6 +456,8 @@ void _tests() {
       action: SemanticsAction.decrease,
       finalValue: '23',
     );
+
+    semantics.dispose();
   });
 
   testWidgets('can increment and decrement minutes', (WidgetTester tester) async {
@@ -501,6 +502,8 @@ void _tests() {
       action: SemanticsAction.decrease,
       finalValue: '58',
     );
+
+    semantics.dispose();
   });
 }
 

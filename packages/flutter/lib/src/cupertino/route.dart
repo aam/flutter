@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
@@ -76,16 +75,15 @@ final DecorationTween _kGradientShadowTween = new DecorationTween(
 class CupertinoPageRoute<T> extends PageRoute<T> {
   /// Creates a page route for use in an iOS designed app.
   ///
-  /// The [builder], [settings], [maintainState], and [fullscreenDialog]
-  /// arguments must not be null.
+  /// The [builder], [maintainState], and [fullscreenDialog] arguments must not
+  /// be null.
   CupertinoPageRoute({
     @required this.builder,
-    RouteSettings settings: const RouteSettings(),
+    RouteSettings settings,
     this.maintainState: true,
     bool fullscreenDialog: false,
     this.hostRoute,
   }) : assert(builder != null),
-       assert(settings != null),
        assert(maintainState != null),
        assert(fullscreenDialog != null),
        super(settings: settings, fullscreenDialog: fullscreenDialog) {
@@ -149,7 +147,7 @@ class CupertinoPageRoute<T> extends PageRoute<T> {
     super.dispose();
   }
 
-  _CupertinoBackGestureController _backGestureController;
+  _CupertinoBackGestureController<T> _backGestureController;
 
   /// Whether a pop gesture is currently underway.
   ///
@@ -217,11 +215,11 @@ class CupertinoPageRoute<T> extends PageRoute<T> {
   ///    appropriate.
   ///  * [Route.startPopGesture], which describes the contract that this method
   ///    must implement.
-  _CupertinoBackGestureController _startPopGesture() {
+  _CupertinoBackGestureController<T> _startPopGesture() {
     assert(!popGestureInProgress);
     assert(popGestureEnabled);
     final PageRoute<T> route = hostRoute ?? this;
-    _backGestureController = new _CupertinoBackGestureController(
+    _backGestureController = new _CupertinoBackGestureController<T>(
       navigator: route.navigator,
       controller: route.controller,
       onEnded: _endPopGesture,
@@ -238,7 +236,11 @@ class CupertinoPageRoute<T> extends PageRoute<T> {
 
   @override
   Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
-    final Widget result = builder(context);
+    final Widget result = new Semantics(
+      scopesRoute: true,
+      explicitChildNodes: true,
+      child: builder(context),
+    );
     assert(() {
       if (result == null) {
         throw new FlutterError(
@@ -265,7 +267,7 @@ class CupertinoPageRoute<T> extends PageRoute<T> {
         // In the middle of a back gesture drag, let the transition be linear to
         // match finger motions.
         linearTransition: popGestureInProgress,
-        child: new _CupertinoBackGestureDetector(
+        child: new _CupertinoBackGestureDetector<T>(
           enabledCallback: () => popGestureEnabled,
           onStartPopGesture: _startPopGesture,
           child: child,
@@ -392,7 +394,10 @@ class CupertinoFullscreenDialogTransition extends StatelessWidget {
 ///
 /// The gesture data is converted from absolute coordinates to logical
 /// coordinates by this widget.
-class _CupertinoBackGestureDetector extends StatefulWidget {
+///
+/// The type `T` specifies the return type of the route with which this gesture
+/// detector is associated.
+class _CupertinoBackGestureDetector<T> extends StatefulWidget {
   const _CupertinoBackGestureDetector({
     Key key,
     @required this.enabledCallback,
@@ -407,14 +412,14 @@ class _CupertinoBackGestureDetector extends StatefulWidget {
 
   final ValueGetter<bool> enabledCallback;
 
-  final ValueGetter<_CupertinoBackGestureController> onStartPopGesture;
+  final ValueGetter<_CupertinoBackGestureController<T>> onStartPopGesture;
 
   @override
-  _CupertinoBackGestureDetectorState createState() => new _CupertinoBackGestureDetectorState();
+  _CupertinoBackGestureDetectorState<T> createState() => new _CupertinoBackGestureDetectorState<T>();
 }
 
-class _CupertinoBackGestureDetectorState extends State<_CupertinoBackGestureDetector> {
-  _CupertinoBackGestureController _backGestureController;
+class _CupertinoBackGestureDetectorState<T> extends State<_CupertinoBackGestureDetector<T>> {
+  _CupertinoBackGestureController<T> _backGestureController;
 
   HorizontalDragGestureRecognizer _recognizer;
 
@@ -508,7 +513,10 @@ class _CupertinoBackGestureDetectorState extends State<_CupertinoBackGestureDete
 ///
 /// This class works entirely in logical coordinates (0.0 is new page dismissed,
 /// 1.0 is new page on top).
-class _CupertinoBackGestureController {
+///
+/// The type `T` specifies the return type of the route with which this gesture
+/// detector controller is associated.
+class _CupertinoBackGestureController<T> {
   /// Creates a controller for an iOS-style back gesture.
   ///
   /// The [navigator] and [controller] arguments must not be null.
@@ -566,7 +574,7 @@ class _CupertinoBackGestureController {
     controller.removeStatusListener(_handleStatusChanged);
     _animating = false;
     if (status == AnimationStatus.dismissed)
-      navigator.pop(); // this will cause the route to get disposed, which will dispose us
+      navigator.pop<T>(); // this will cause the route to get disposed, which will dispose us
     onEnded(); // this will call dispose if popping the route failed to do so
   }
 

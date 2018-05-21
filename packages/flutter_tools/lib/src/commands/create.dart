@@ -356,15 +356,24 @@ String _createUTIIdentifier(String organization, String name) {
 }
 
 final Set<String> _packageDependencies = new Set<String>.from(<String>[
+  'analyzer',
   'args',
   'async',
   'collection',
   'convert',
+  'crypto',
   'flutter',
+  'flutter_test',
+  'front_end',
   'html',
+  'http',
   'intl',
+  'io',
+  'isolate',
+  'kernel',
   'logging',
   'matcher',
+  'meta',
   'mime',
   'path',
   'plugin',
@@ -399,12 +408,12 @@ String _validateProjectDir(String dirPath, { String flutterRoot }) {
 
   final FileSystemEntityType type = fs.typeSync(dirPath);
 
-  if (type != FileSystemEntityType.NOT_FOUND) {
+  if (type != FileSystemEntityType.NOT_FOUND) { // ignore: deprecated_member_use
     switch (type) {
-      case FileSystemEntityType.FILE:
+      case FileSystemEntityType.FILE: // ignore: deprecated_member_use
         // Do not overwrite files.
         return "Invalid project name: '$dirPath' - file exists.";
-      case FileSystemEntityType.LINK:
+      case FileSystemEntityType.LINK: // ignore: deprecated_member_use
         // Do not overwrite links.
         return "Invalid project name: '$dirPath' - refers to a link.";
     }

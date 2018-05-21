@@ -41,7 +41,7 @@ export 'dart:io'
         exitCode,
         // File              NO! Use `file_system.dart`
         // FileSystemEntity  NO! Use `file_system.dart`
-        GZIP,
+        GZIP, // ignore: deprecated_member_use
         HandshakeException,
         HttpClient,
         HttpClientRequest,
@@ -71,14 +71,15 @@ export 'dart:io'
         // stdout,           NO! Use `io.dart`
         Socket,
         SocketException,
-        SYSTEM_ENCODING,
+        SYSTEM_ENCODING, // ignore: deprecated_member_use
         WebSocket,
+        WebSocketException,
         WebSocketTransformer;
 
 /// Exits the process with the given [exitCode].
 typedef void ExitFunction(int exitCode);
 
-final ExitFunction _defaultExitFunction = io.exit;
+const ExitFunction _defaultExitFunction = io.exit;
 
 ExitFunction _exitFunction = _defaultExitFunction;
 
@@ -115,11 +116,11 @@ class ProcessSignal implements io.ProcessSignal {
   @visibleForTesting
   const ProcessSignal(this._delegate);
 
-  static const ProcessSignal SIGWINCH = const _PosixProcessSignal._(io.ProcessSignal.SIGWINCH);
-  static const ProcessSignal SIGTERM = const _PosixProcessSignal._(io.ProcessSignal.SIGTERM);
-  static const ProcessSignal SIGUSR1 = const _PosixProcessSignal._(io.ProcessSignal.SIGUSR1);
-  static const ProcessSignal SIGUSR2 = const _PosixProcessSignal._(io.ProcessSignal.SIGUSR2);
-  static const ProcessSignal SIGINT =  const ProcessSignal(io.ProcessSignal.SIGINT);
+  static const ProcessSignal SIGWINCH = const _PosixProcessSignal._(io.ProcessSignal.SIGWINCH); // ignore: deprecated_member_use
+  static const ProcessSignal SIGTERM = const _PosixProcessSignal._(io.ProcessSignal.SIGTERM); // ignore: deprecated_member_use
+  static const ProcessSignal SIGUSR1 = const _PosixProcessSignal._(io.ProcessSignal.SIGUSR1); // ignore: deprecated_member_use
+  static const ProcessSignal SIGUSR2 = const _PosixProcessSignal._(io.ProcessSignal.SIGUSR2); // ignore: deprecated_member_use
+  static const ProcessSignal SIGINT =  const ProcessSignal(io.ProcessSignal.SIGINT); // ignore: deprecated_member_use
 
   final io.ProcessSignal _delegate;
 
@@ -155,23 +156,8 @@ class Stdio {
   io.IOSink get stderr => io.stderr;
 }
 
-io.IOSink get stderr {
-  if (context == null)
-    return io.stderr;
-  final Stdio contextStreams = context[Stdio];
-  return contextStreams.stderr;
-}
+io.IOSink get stderr => context[Stdio].stderr;
 
-Stream<List<int>> get stdin {
-  if (context == null)
-    return io.stdin;
-  final Stdio contextStreams = context[Stdio];
-  return contextStreams.stdin;
-}
+Stream<List<int>> get stdin => context[Stdio].stdin;
 
-io.IOSink get stdout {
-  if (context == null)
-    return io.stdout;
-  final Stdio contextStreams = context[Stdio];
-  return contextStreams.stdout;
-}
+io.IOSink get stdout => context[Stdio].stdout;

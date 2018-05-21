@@ -19,6 +19,7 @@ library painting;
 
 export 'src/painting/alignment.dart';
 export 'src/painting/basic_types.dart';
+export 'src/painting/beveled_rectangle_border.dart';
 export 'src/painting/binding.dart';
 export 'src/painting/border_radius.dart';
 export 'src/painting/borders.dart';
@@ -28,6 +29,7 @@ export 'src/painting/box_fit.dart';
 export 'src/painting/box_shadow.dart';
 export 'src/painting/circle_border.dart';
 export 'src/painting/colors.dart';
+export 'src/painting/debug.dart';
 export 'src/painting/decoration.dart';
 export 'src/painting/decoration_image.dart';
 export 'src/painting/edge_insets.dart';

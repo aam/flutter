@@ -4,7 +4,6 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'colors.dart';
@@ -179,14 +178,10 @@ class _ModalBottomSheet<T> extends StatefulWidget {
 }
 
 class _ModalBottomSheetState<T> extends State<_ModalBottomSheet<T>> {
-  void _navigatorPop() {
-    Navigator.pop(context);
-  }
-
   @override
   Widget build(BuildContext context) {
     return new GestureDetector(
-      onTap: _navigatorPop,
+      onTap: () => Navigator.pop(context),
       child: new AnimatedBuilder(
         animation: widget.route.animation,
         builder: (BuildContext context, Widget child) {
@@ -211,7 +206,8 @@ class _ModalBottomSheetRoute<T> extends PopupRoute<T> {
     this.builder,
     this.theme,
     this.barrierLabel,
-  });
+    RouteSettings settings,
+  }) : super(settings: settings);
 
   final WidgetBuilder builder;
   final ThemeData theme;

@@ -361,9 +361,9 @@ abstract class SliverMultiBoxAdaptorWidget extends RenderObjectWidget {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<SliverChildDelegate>('delegate', delegate));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<SliverChildDelegate>('delegate', delegate));
   }
 }
 
@@ -739,6 +739,20 @@ class SliverMultiBoxAdaptorElement extends RenderObjectElement implements Render
   }
 
   @override
+  Element updateChild(Element child, Widget newWidget, dynamic newSlot) {
+    final SliverMultiBoxAdaptorParentData oldParentData = child?.renderObject?.parentData;
+    final Element newChild = super.updateChild(child, newWidget, newSlot);
+    final SliverMultiBoxAdaptorParentData newParentData = newChild?.renderObject?.parentData;
+
+    // Preserve the old layoutOffset if the renderObject was swapped out.
+    if (oldParentData != newParentData && oldParentData != null && newParentData != null) {
+      newParentData.layoutOffset = oldParentData.layoutOffset;
+    }
+
+    return newChild;
+  }
+
+  @override
   void forgetChild(Element child) {
     assert(child != null);
     assert(child.slot != null);
@@ -773,7 +787,7 @@ class SliverMultiBoxAdaptorElement extends RenderObjectElement implements Render
   ) {
     final int childCount = this.childCount;
     if (childCount == null)
-      return double.INFINITY;
+      return double.infinity;
     if (lastIndex == childCount - 1)
       return trailingScrollOffset;
     final int reifiedCount = lastIndex - firstIndex + 1;
@@ -874,6 +888,25 @@ class SliverMultiBoxAdaptorElement extends RenderObjectElement implements Render
    assert(!_childElements.values.any((Element child) => child == null));
     _childElements.values.toList().forEach(visitor);
   }
+
+  @override
+  void debugVisitOnstageChildren(ElementVisitor visitor) {
+    _childElements.values.where((Element child) {
+      final SliverMultiBoxAdaptorParentData parentData = child.renderObject.parentData;
+      double itemExtent;
+      switch (renderObject.constraints.axis) {
+        case Axis.horizontal:
+          itemExtent = child.renderObject.paintBounds.width;
+          break;
+        case Axis.vertical:
+          itemExtent = child.renderObject.paintBounds.height;
+          break;
+      }
+
+      return parentData.layoutOffset < renderObject.constraints.scrollOffset + renderObject.constraints.remainingPaintExtent &&
+          parentData.layoutOffset + itemExtent > renderObject.constraints.scrollOffset;
+    }).forEach(visitor);
+  }
 }
 
 /// A sliver that contains a single box child that fills the remaining space in
@@ -944,8 +977,8 @@ class KeepAlive extends ParentDataWidget<SliverMultiBoxAdaptorWidget> {
   bool debugCanApplyOutOfTurn() => keepAlive;
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<bool>('keepAlive', keepAlive));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<bool>('keepAlive', keepAlive));
   }
 }

@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:ui' show SemanticsFlag, SemanticsAction;
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -17,7 +15,7 @@ import '../widgets/semantics_tester.dart';
 Widget boilerplate({ Widget child, TextDirection textDirection: TextDirection.ltr }) {
   return new Localizations(
     locale: const Locale('en', 'US'),
-    delegates: <LocalizationsDelegate<dynamic>>[
+    delegates: const <LocalizationsDelegate<dynamic>>[
       DefaultMaterialLocalizations.delegate,
       DefaultWidgetsLocalizations.delegate,
     ],
@@ -291,7 +289,7 @@ void main() {
     }
 
     StateMarkerState findStateMarkerState(String name) {
-      return tester.state(find.widgetWithText(StateMarker, name));
+      return tester.state(find.widgetWithText(StateMarker, name, skipOffstage: false));
     }
 
     await tester.pumpWidget(builder());
@@ -969,7 +967,7 @@ void main() {
     final RenderBox tabBarBox = tester.firstRenderObject<RenderBox>(find.byType(TabBar));
     expect(tabBarBox.size.height, 54.0); // 54 = _kTabHeight(46) + indicatorWeight(8.0)
 
-    final double indicatorY = 54.0 - indicatorWeight / 2.0;
+    const double indicatorY = 54.0 - indicatorWeight / 2.0;
     double indicatorLeft = padLeft + indicatorWeight / 2.0;
     double indicatorRight = 200.0 - (padRight + indicatorWeight / 2.0);
 
@@ -1030,7 +1028,7 @@ void main() {
     expect(tabBarBox.size.height, 54.0); // 54 = _kTabHeight(46) + indicatorWeight(8.0)
     expect(tabBarBox.size.width, 800.0);
 
-    final double indicatorY = 54.0 - indicatorWeight / 2.0;
+    const double indicatorY = 54.0 - indicatorWeight / 2.0;
     double indicatorLeft = 600.0 + padLeft + indicatorWeight / 2.0;
     double indicatorRight = 800.0 - padRight - indicatorWeight / 2.0;
 
@@ -1182,7 +1180,7 @@ void main() {
     expect(tester.getRect(find.byKey(tabs[2].key)), tabRect);
 
     // Tab 0 selected, indicator padding resolves to left: 100.0
-    final double indicatorLeft = 100.0 + indicatorWeight / 2.0;
+    const double indicatorLeft = 100.0 + indicatorWeight / 2.0;
     final double indicatorRight = 130.0 + kTabLabelPadding.horizontal - indicatorWeight / 2.0;
     final double indicatorY = tabBottom + indicatorWeight / 2.0;
     expect(tabBarBox, paints..line(
@@ -1252,7 +1250,7 @@ void main() {
     // Tab 0 selected, indicator padding resolves to right: 100.0
     final double indicatorLeft = tabLeft - kTabLabelPadding.left + indicatorWeight / 2.0;
     final double indicatorRight = tabRight + kTabLabelPadding.left - indicatorWeight / 2.0 - 100.0;
-    final double indicatorY = 50.0 + indicatorWeight / 2.0;
+    const double indicatorY = 50.0 + indicatorWeight / 2.0;
     expect(tabBarBox, paints..line(
       strokeWidth: indicatorWeight,
       p1: new Offset(indicatorLeft, indicatorY),
@@ -1295,7 +1293,7 @@ void main() {
     // Tab 0 out of 100 selected
     double indicatorLeft = 99.0 * 100.0 + indicatorWeight / 2.0;
     double indicatorRight = 100.0 * 100.0 - indicatorWeight / 2.0;
-    final double indicatorY = 40.0 + indicatorWeight / 2.0;
+    const double indicatorY = 40.0 + indicatorWeight / 2.0;
     expect(tabBarBox, paints..line(
       strokeWidth: indicatorWeight,
       p1: new Offset(indicatorLeft, indicatorY),
@@ -1309,8 +1307,8 @@ void main() {
     // The x coordinates of p1 and p2 were derived empirically, not analytically.
     expect(tabBarBox, paints..line(
       strokeWidth: indicatorWeight,
-      p1: new Offset(2476.0, indicatorY),
-      p2: new Offset(2574.0, indicatorY),
+      p1: const Offset(2476.0, indicatorY),
+      p2: const Offset(2574.0, indicatorY),
     ));
 
     await tester.pump(const Duration(milliseconds: 501));
@@ -1362,22 +1360,28 @@ void main() {
               rect: TestSemantics.fullScreen,
               children: <TestSemantics>[
                 new TestSemantics(
-                  id: 3,
-                  actions: SemanticsAction.tap.index,
-                  flags: SemanticsFlag.isSelected.index,
-                  label: 'TAB #0\nTab 1 of 2',
-                  rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
-                  transform: new Matrix4.translationValues(0.0, 276.0, 0.0),
-                ),
-                new TestSemantics(
-                  id: 4,
-                  actions: SemanticsAction.tap.index,
-                  label: 'TAB #1\nTab 2 of 2',
-                  rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
-                  transform: new Matrix4.translationValues(108.0, 276.0, 0.0),
-                ),
-              ]
-            )
+                    id: 3,
+                    rect: TestSemantics.fullScreen,
+                    children: <TestSemantics>[
+                      new TestSemantics(
+                        id: 4,
+                        actions: SemanticsAction.tap.index,
+                        flags: SemanticsFlag.isSelected.index,
+                        label: 'TAB #0\nTab 1 of 2',
+                        rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
+                        transform: new Matrix4.translationValues(0.0, 276.0, 0.0),
+                      ),
+                      new TestSemantics(
+                        id: 5,
+                        actions: SemanticsAction.tap.index,
+                        label: 'TAB #1\nTab 2 of 2',
+                        rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
+                        transform: new Matrix4.translationValues(108.0, 276.0, 0.0),
+                      ),
+                    ]
+                )
+              ],
+            ),
           ],
         ),
       ],
@@ -1619,22 +1623,28 @@ void main() {
               rect: TestSemantics.fullScreen,
               children: <TestSemantics>[
                 new TestSemantics(
-                  id: 3,
-                  actions: SemanticsAction.tap.index,
-                  flags: SemanticsFlag.isSelected.index,
-                  label: 'Semantics override 0\nTab 1 of 2',
-                  rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
-                  transform: new Matrix4.translationValues(0.0, 276.0, 0.0),
-                ),
-                new TestSemantics(
-                  id: 4,
-                  actions: SemanticsAction.tap.index,
-                  label: 'Semantics override 1\nTab 2 of 2',
-                  rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
-                  transform: new Matrix4.translationValues(108.0, 276.0, 0.0),
-                ),
-              ]
-            )
+                    id: 3,
+                    rect: TestSemantics.fullScreen,
+                    children: <TestSemantics>[
+                      new TestSemantics(
+                        id: 4,
+                        actions: SemanticsAction.tap.index,
+                        flags: SemanticsFlag.isSelected.index,
+                        label: 'Semantics override 0\nTab 1 of 2',
+                        rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
+                        transform: new Matrix4.translationValues(0.0, 276.0, 0.0),
+                      ),
+                      new TestSemantics(
+                        id: 5,
+                        actions: SemanticsAction.tap.index,
+                        label: 'Semantics override 1\nTab 2 of 2',
+                        rect: new Rect.fromLTRB(0.0, 0.0, 108.0, kTextTabBarHeight),
+                        transform: new Matrix4.translationValues(108.0, 276.0, 0.0),
+                      ),
+                    ]
+                )
+              ],
+            ),
           ],
         ),
       ],
@@ -1661,7 +1671,7 @@ void main() {
           alignment: Alignment.topLeft,
           child: new TabBar(
             controller: controller,
-            tabs: <Tab>[
+            tabs: const <Tab>[
               const Tab(text: 'LEFT'),
               const Tab(text: 'RIGHT'),
             ],
@@ -1691,7 +1701,7 @@ void main() {
     final RenderBox tabBarBox = tester.firstRenderObject<RenderBox>(find.byType(TabBar));
     expect(tabBarBox.size.height, 48.0); // 48 = _kTabHeight(46) + indicatorWeight(2.0)
 
-    final double indicatorY = 48.0 - indicatorWeight / 2.0;
+    const double indicatorY = 48.0 - indicatorWeight / 2.0;
     double indicatorLeft = indicatorWeight / 2.0;
     double indicatorRight = 400.0 - indicatorWeight / 2.0; // 400 = screen_width / 2
     expect(tabBarBox, paints..line(
@@ -1715,6 +1725,17 @@ void main() {
       p1: new Offset(indicatorLeft, indicatorY),
       p2: new Offset(indicatorRight, indicatorY),
     ));
+  });
+
+  testWidgets('Default tab indicator color is white', (WidgetTester tester) async {
+    // Regression test for https://github.com/flutter/flutter/issues/15958
+    final List<String> tabs = <String>['LEFT', 'RIGHT'];
+    await tester.pumpWidget(buildLeftRightApp(tabs: tabs, value: 'LEFT'));
+    final RenderBox tabBarBox = tester.firstRenderObject<RenderBox>(find.byType(TabBar));
+    expect(tabBarBox, paints..line(
+      color: Colors.white,
+    ));
+
   });
 
 }

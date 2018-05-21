@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'shrine_theme.dart';
@@ -51,7 +50,7 @@ class ShrinePageState extends State<ShrinePage> {
   }
 
   void _showShoppingCart() {
-    showModalBottomSheet<Null>(context: context, builder: (BuildContext context) {
+    showModalBottomSheet<void>(context: context, builder: (BuildContext context) {
       if (widget.shoppingCart.isEmpty) {
         return const Padding(
           padding: const EdgeInsets.all(24.0),

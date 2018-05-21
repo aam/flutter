@@ -4,10 +4,10 @@
 
 import 'dart:ui' show lerpDouble;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'divider.dart';
 import 'material.dart';
 import 'shadows.dart';
 import 'theme.dart';
@@ -553,9 +553,9 @@ class _MergeableMaterialState extends State<MergeableMaterial> with TickerProvid
           final bool hasBottomDivider = _willNeedDivider(i + 1);
 
           Border border;
-          final BorderSide divider = new BorderSide(
-            color: Theme.of(context).dividerColor,
-            width: 0.5
+          final BorderSide divider = Divider.createBorderSide(
+            context,
+            width: 0.5, // TODO(ianh): This probably looks terrible when the dpr isn't a power of two.
           );
 
           if (i == 0) {
@@ -686,9 +686,7 @@ class _RenderMergeableMaterialListBody extends RenderListBody {
 
   void _paintShadows(Canvas canvas, Rect rect) {
     for (BoxShadow boxShadow in boxShadows) {
-      final Paint paint = new Paint()
-        ..color = boxShadow.color
-        ..maskFilter = new MaskFilter.blur(BlurStyle.normal, boxShadow.blurSigma);
+      final Paint paint = boxShadow.toPaint();
       // TODO(dragostis): Right now, we are only interpolating the border radii
       // of the visible Material slices, not the shadows; they are not getting
       // interpolated and always have the same rounded radii. Once shadow

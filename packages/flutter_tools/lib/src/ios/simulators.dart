@@ -15,8 +15,8 @@ import '../base/platform.dart';
 import '../base/process.dart';
 import '../base/process_manager.dart';
 import '../build_info.dart';
+import '../bundle.dart' as bundle;
 import '../device.dart';
-import '../flx.dart' as flx;
 import '../globals.dart';
 import '../protocol_discovery.dart';
 import 'ios_workflow.dart';
@@ -87,7 +87,7 @@ class SimControl {
       return <String, Map<String, dynamic>>{};
     }
 
-    return JSON.decode(results.stdout)[section.name];
+    return json.decode(results.stdout)[section.name];
   }
 
   /// Returns a list of all available devices, both potential and connected.
@@ -247,36 +247,13 @@ class IOSSimulator extends Device {
       return false;
     }
 
-    // Step 1: Check if the device is part of a blacklisted category.
-    //         We do not support WatchOS or tvOS devices.
-
+    // Check if the device is part of a blacklisted category.
+    // We do not yet support WatchOS or tvOS devices.
     final RegExp blacklist = new RegExp(r'Apple (TV|Watch)', caseSensitive: false);
     if (blacklist.hasMatch(name)) {
-      _supportMessage = 'Flutter does not support Apple TV or Apple Watch. Select an iPhone 5s or above.';
+      _supportMessage = 'Flutter does not support Apple TV or Apple Watch.';
       return false;
     }
-
-    // Step 2: Check if the device must be rejected because of its version.
-    //         There is an artificial check on older simulators where arm64
-    //         targeted applications cannot be run (even though the Flutter
-    //         runner on the simulator is completely different).
-
-    // Check for unsupported iPads.
-    final Match iPadMatch = new RegExp(r'iPad (2|Retina)', caseSensitive: false).firstMatch(name);
-    if (iPadMatch != null) {
-      _supportMessage = 'Flutter does not yet support iPad 2 or iPad Retina. Select an iPad Air or above.';
-      return false;
-    }
-
-    // Check for unsupported iPhones.
-    final Match iPhoneMatch = new RegExp(r'iPhone [0-5]').firstMatch(name);
-    if (iPhoneMatch != null) {
-      if (name == 'iPhone 5s')
-        return true;
-      _supportMessage = 'Flutter does not yet support iPhone 5 or earlier. Select an iPhone 5s or above.';
-      return false;
-    }
-
     return true;
   }
 
@@ -292,7 +269,7 @@ class IOSSimulator extends Device {
 
   @override
   Future<LaunchResult> startApp(
-    ApplicationPackage app, {
+    ApplicationPackage package, {
     String mainPath,
     String route,
     DebuggingOptions debuggingOptions,
@@ -303,29 +280,21 @@ class IOSSimulator extends Device {
     bool ipv6: false,
   }) async {
     if (!prebuiltApplication) {
-      printTrace('Building ${app.name} for $id.');
+      printTrace('Building ${package.name} for $id.');
 
       try {
-        await _setupUpdatedApplicationBundle(app, debuggingOptions.buildInfo);
+        await _setupUpdatedApplicationBundle(package, debuggingOptions.buildInfo, mainPath, usesTerminalUi);
       } on ToolExit catch (e) {
         printError(e.message);
         return new LaunchResult.failed();
       }
     } else {
-      if (!await installApp(app))
+      if (!await installApp(package))
         return new LaunchResult.failed();
     }
 
     // Prepare launch arguments.
     final List<String> args = <String>['--enable-dart-profiling'];
-
-    if (!prebuiltApplication) {
-      args.addAll(<String>[
-        '--flutter-assets-dir=${fs.path.absolute(getAssetBuildDirectory())}',
-        '--dart-main=${fs.path.absolute(mainPath)}${debuggingOptions.buildInfo.previewDart2?".dill":""}',
-        '--packages=${fs.path.absolute('.packages')}',
-      ]);
-    }
 
     if (debuggingOptions.debuggingEnabled) {
       if (debuggingOptions.buildInfo.isDebug)
@@ -344,11 +313,11 @@ class IOSSimulator extends Device {
     ProtocolDiscovery observatoryDiscovery;
     if (debuggingOptions.debuggingEnabled)
       observatoryDiscovery = new ProtocolDiscovery.observatory(
-          getLogReader(app: app), ipv6: ipv6);
+          getLogReader(app: package), ipv6: ipv6);
 
     // Launch the updated application in the simulator.
     try {
-      await SimControl.instance.launch(id, app.id, args);
+      await SimControl.instance.launch(id, package.id, args);
     } catch (error) {
       printError('$error');
       return new LaunchResult.failed();
@@ -381,14 +350,14 @@ class IOSSimulator extends Device {
     return criteria.reduce((bool a, bool b) => a && b);
   }
 
-  Future<Null> _setupUpdatedApplicationBundle(ApplicationPackage app, BuildInfo buildInfo) async {
-    await _sideloadUpdatedAssetsForInstalledApplicationBundle(app, buildInfo);
+  Future<Null> _setupUpdatedApplicationBundle(ApplicationPackage app, BuildInfo buildInfo, String mainPath, bool usesTerminalUi) async {
+    await _sideloadUpdatedAssetsForInstalledApplicationBundle(app, buildInfo, mainPath);
 
     if (!await _applicationIsInstalledAndRunning(app))
-      return _buildAndInstallApplicationBundle(app, buildInfo);
+      return _buildAndInstallApplicationBundle(app, buildInfo, mainPath, usesTerminalUi);
   }
 
-  Future<Null> _buildAndInstallApplicationBundle(ApplicationPackage app, BuildInfo buildInfo) async {
+  Future<Null> _buildAndInstallApplicationBundle(ApplicationPackage app, BuildInfo buildInfo, String mainPath, bool usesTerminalUi) async {
     // Step 1: Build the Xcode project.
     // The build mode for the simulator is always debug.
 
@@ -398,7 +367,13 @@ class IOSSimulator extends Device {
         extraGenSnapshotOptions: buildInfo.extraGenSnapshotOptions,
         preferSharedLibrary: buildInfo.preferSharedLibrary);
 
-    final XcodeBuildResult buildResult = await buildXcodeProject(app: app, buildInfo: debugBuildInfo, buildForDevice: false);
+    final XcodeBuildResult buildResult = await buildXcodeProject(
+      app: app,
+      buildInfo: debugBuildInfo,
+      targetOverride: mainPath,
+      buildForDevice: false,
+      usesTerminalUi: usesTerminalUi,
+    );
     if (!buildResult.success)
       throwToolExit('Could not build the application for the simulator.');
 
@@ -413,10 +388,11 @@ class IOSSimulator extends Device {
     await SimControl.instance.install(id, fs.path.absolute(bundle.path));
   }
 
-  Future<Null> _sideloadUpdatedAssetsForInstalledApplicationBundle(ApplicationPackage app, BuildInfo buildInfo) {
+  Future<Null> _sideloadUpdatedAssetsForInstalledApplicationBundle(ApplicationPackage app, BuildInfo buildInfo, String mainPath) {
     // When running in previewDart2 mode, we still need to run compiler to
     // produce kernel file for the application.
-    return flx.build(
+    return bundle.build(
+      mainPath: mainPath,
       precompiledSnapshot: !buildInfo.previewDart2,
       previewDart2: buildInfo.previewDart2,
       trackWidgetCreation: buildInfo.trackWidgetCreation,
@@ -441,11 +417,11 @@ class IOSSimulator extends Device {
   @override
   Future<String> get sdkNameAndVersion async => category;
 
-  final RegExp _iosSdkRegExp = new RegExp(r'iOS (\d+)');
+  final RegExp _iosSdkRegExp = new RegExp(r'iOS( |-)(\d+)');
 
   Future<int> get sdkMajorVersion async {
     final Match sdkMatch = _iosSdkRegExp.firstMatch(await sdkNameAndVersion);
-    return int.parse(sdkMatch.group(1) ?? 11);
+    return int.parse(sdkMatch?.group(2) ?? 11);
   }
 
   @override
@@ -462,7 +438,7 @@ class IOSSimulator extends Device {
   void clearLogs() {
     final File logFile = fs.file(logFilePath);
     if (logFile.existsSync()) {
-      final RandomAccessFile randomFile = logFile.openSync(mode: FileMode.WRITE);
+      final RandomAccessFile randomFile = logFile.openSync(mode: FileMode.WRITE); // ignore: deprecated_member_use
       randomFile.truncateSync(0);
       randomFile.closeSync();
     }
@@ -477,7 +453,7 @@ class IOSSimulator extends Device {
   }
 
   bool get _xcodeVersionSupportsScreenshot {
-    return xcode.xcodeMajorVersion > 8 || (xcode.xcodeMajorVersion == 8 && xcode.xcodeMinorVersion >= 2);
+    return xcode.majorVersion > 8 || (xcode.majorVersion == 8 && xcode.minorVersion >= 2);
   }
 
   @override
@@ -540,15 +516,15 @@ class _IOSSimulatorLogReader extends DeviceLogReader {
     // Device log.
     await device.ensureLogsExists();
     _deviceProcess = await launchDeviceLogTool(device);
-    _deviceProcess.stdout.transform(UTF8.decoder).transform(const LineSplitter()).listen(_onDeviceLine);
-    _deviceProcess.stderr.transform(UTF8.decoder).transform(const LineSplitter()).listen(_onDeviceLine);
+    _deviceProcess.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen(_onDeviceLine);
+    _deviceProcess.stderr.transform(utf8.decoder).transform(const LineSplitter()).listen(_onDeviceLine);
 
     // Track system.log crashes.
     // ReportCrash[37965]: Saved crash report for FlutterRunner[37941]...
     _systemProcess = await launchSystemLogTool(device);
     if (_systemProcess != null) {
-      _systemProcess.stdout.transform(UTF8.decoder).transform(const LineSplitter()).listen(_onSystemLine);
-      _systemProcess.stderr.transform(UTF8.decoder).transform(const LineSplitter()).listen(_onSystemLine);
+      _systemProcess.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen(_onSystemLine);
+      _systemProcess.stderr.transform(utf8.decoder).transform(const LineSplitter()).listen(_onSystemLine);
     }
 
     // We don't want to wait for the process or its callback. Best effort

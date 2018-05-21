@@ -7,11 +7,14 @@ import 'package:meta/meta.dart';
 import '../artifacts.dart';
 import '../base/context.dart';
 import '../base/file_system.dart';
+import '../base/io.dart';
+import '../base/platform.dart';
 import '../base/process.dart';
+import '../base/process_manager.dart';
 import '../base/utils.dart';
 import '../build_info.dart';
+import '../bundle.dart' as bundle;
 import '../cache.dart';
-import '../flx.dart' as flx;
 import '../globals.dart';
 
 final RegExp _settingExpr = new RegExp(r'(\w+)\s*=\s*(.*)$');
@@ -25,24 +28,29 @@ String _generatedXcodePropertiesPath(String projectPath) {
   return fs.path.join(projectPath, 'ios', 'Flutter', 'Generated.xcconfig');
 }
 
-/// Writes default Xcode properties files in the Flutter project at
-/// [projectPath], if such files do not already exist.
+/// Writes default Xcode properties files in the Flutter project at [projectPath],
+/// if project is an iOS project and such files do not already exist.
 void generateXcodeProperties(String projectPath) {
-  if (fs.file(_generatedXcodePropertiesPath(projectPath)).existsSync())
-    return;
-  updateGeneratedXcodeProperties(
+  if (fs.isDirectorySync(fs.path.join(projectPath, 'ios'))) {
+    if (fs.file(_generatedXcodePropertiesPath(projectPath)).existsSync())
+      return;
+    updateGeneratedXcodeProperties(
       projectPath: projectPath,
       buildInfo: BuildInfo.debug,
-      target: flx.defaultMainPath,
+      targetOverride: bundle.defaultMainPath,
       previewDart2: false,
-  );
+    );
+  }
 }
 
 /// Writes or rewrites Xcode property files with the specified information.
+///
+/// targetOverride: Optional parameter, if null or unspecified the default value
+/// from xcode_backend.sh is used 'lib/main.dart'.
 void updateGeneratedXcodeProperties({
   @required String projectPath,
   @required BuildInfo buildInfo,
-  @required String target,
+  String targetOverride,
   @required bool previewDart2,
 }) {
   final StringBuffer localsBuffer = new StringBuffer();
@@ -56,7 +64,8 @@ void updateGeneratedXcodeProperties({
   localsBuffer.writeln('FLUTTER_APPLICATION_PATH=${fs.path.normalize(projectPath)}');
 
   // Relative to FLUTTER_APPLICATION_PATH, which is [Directory.current].
-  localsBuffer.writeln('FLUTTER_TARGET=$target');
+  if (targetOverride != null)
+    localsBuffer.writeln('FLUTTER_TARGET=$targetOverride');
 
   // The runtime mode for the current build.
   localsBuffer.writeln('FLUTTER_BUILD_MODE=${buildInfo.modeName}');
@@ -82,18 +91,57 @@ void updateGeneratedXcodeProperties({
   localsFile.writeAsStringSync(localsBuffer.toString());
 }
 
-XcodeProjectInterpreter get xcodeProjectInterpreter => context.putIfAbsent(
-  XcodeProjectInterpreter,
-  () => const XcodeProjectInterpreter(),
-);
+XcodeProjectInterpreter get xcodeProjectInterpreter => context[XcodeProjectInterpreter];
 
-/// Interpreter of Xcode projects settings.
+/// Interpreter of Xcode projects.
 class XcodeProjectInterpreter {
   static const String _executable = '/usr/bin/xcodebuild';
+  static final RegExp _versionRegex = new RegExp(r'Xcode ([0-9.]+)');
 
-  const XcodeProjectInterpreter();
+  void _updateVersion() {
+    if (!platform.isMacOS || !fs.file(_executable).existsSync()) {
+      return;
+    }
+    try {
+      final ProcessResult result = processManager.runSync(<String>[_executable, '-version']);
+      if (result.exitCode != 0) {
+        return;
+      }
+      _versionText = result.stdout.trim().replaceAll('\n', ', ');
+      final Match match = _versionRegex.firstMatch(versionText);
+      if (match == null)
+        return;
+      final String version = match.group(1);
+      final List<String> components = version.split('.');
+      _majorVersion = int.parse(components[0]);
+      _minorVersion = components.length == 1 ? 0 : int.parse(components[1]);
+    } on ProcessException {
+      // Ignore: leave values null.
+    }
+  }
 
-  bool get canInterpretXcodeProjects => fs.isFileSync(_executable);
+  bool get isInstalled => majorVersion != null;
+
+  String _versionText;
+  String get versionText {
+    if (_versionText == null)
+      _updateVersion();
+    return _versionText;
+  }
+
+  int _majorVersion;
+  int get majorVersion {
+    if (_majorVersion == null)
+      _updateVersion();
+    return _majorVersion;
+  }
+
+  int _minorVersion;
+  int get minorVersion {
+    if (_minorVersion == null)
+      _updateVersion();
+    return _minorVersion;
+  }
 
   Map<String, String> getBuildSettings(String projectPath, String target) {
     final String out = runCheckedSync(<String>[

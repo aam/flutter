@@ -298,36 +298,6 @@ abstract class RenderSliverMultiBoxAdaptor extends RenderSliver
     _keepAliveBucket.values.forEach(visitor);
   }
 
-  @override
-  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
-    switch (constraints.normalizedGrowthDirection) {
-      case GrowthDirection.forward:
-        super.visitChildrenForSemantics((RenderObject child) {
-          // The sliver is overlapped at the leading edge; check if trailing edge is visible.
-          final Offset bottomRightInViewport = MatrixUtils.transformPoint(
-              child.getTransformTo(parent), child.semanticBounds.bottomRight
-          );
-          final double endOverlap = constraints.overlap;
-          if ((constraints.axis == Axis.vertical && bottomRightInViewport.dy > endOverlap) ||
-              (constraints.axis == Axis.horizontal && bottomRightInViewport.dx > endOverlap))
-            visitor(child);
-        });
-        break;
-      case GrowthDirection.reverse:
-        super.visitChildrenForSemantics((RenderObject child) {
-          // The sliver is overlapped at the trailing edge; check if leading edge is visible.
-          final Offset topLeftInViewport = MatrixUtils.transformPoint(
-              child.getTransformTo(parent), child.semanticBounds.topLeft
-          );
-          final double startOverlap = constraints.remainingPaintExtent - constraints.overlap;
-          if ((constraints.axis == Axis.vertical && topLeftInViewport.dy < startOverlap) ||
-              (constraints.axis == Axis.horizontal && topLeftInViewport.dx < startOverlap))
-            visitor(child);
-        });
-        break;
-    }
-  }
-
   /// Called during layout to create and add the child with the given index and
   /// scroll offset.
   ///
@@ -560,9 +530,9 @@ abstract class RenderSliverMultiBoxAdaptor extends RenderSliver
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsNode.message(firstChild != null ? 'currently live children: ${indexOf(firstChild)} to ${indexOf(lastChild)}' : 'no children current live'));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsNode.message(firstChild != null ? 'currently live children: ${indexOf(firstChild)} to ${indexOf(lastChild)}' : 'no children current live'));
   }
 
   /// Asserts that the reified child list is not empty and has a contiguous

@@ -42,7 +42,12 @@ void main() {
     });
 
     tearDown(() {
-      temp.deleteSync(recursive: true);
+      try {
+        temp.deleteSync(recursive: true);
+      } on FileSystemException catch (e) {
+        // ignore errors deleting the temporary directory
+        print('Ignored exception during tearDown: $e');
+      }
     });
 
     // Verify that we create a project that is well-formed.
@@ -207,7 +212,7 @@ void main() {
             <String>[file.path],
             workingDirectory: projectDir.path,
           );
-          final String formatted = await process.stdout.transform(UTF8.decoder).join();
+          final String formatted = await process.stdout.transform(utf8.decoder).join();
 
           expect(original, formatted, reason: file.path);
         }
@@ -431,14 +436,13 @@ Future<Null> _createAndAnalyzeProject(
     { List<String> unexpectedPaths = const <String>[], bool plugin = false }) async {
   await _createProject(dir, createArgs, expectedPaths, unexpectedPaths: unexpectedPaths, plugin: plugin);
   if (plugin) {
-    await _analyzeProject(dir.path, target: fs.path.join(dir.path, 'lib', 'flutter_project.dart'));
-    await _analyzeProject(fs.path.join(dir.path, 'example'));
+    await _analyzeProject(dir.path);
   } else {
     await _analyzeProject(dir.path);
   }
 }
 
-Future<Null> _analyzeProject(String workingDir, {String target}) async {
+Future<Null> _analyzeProject(String workingDir) async {
   final String flutterToolsPath = fs.path.absolute(fs.path.join(
     'bin',
     'flutter_tools.dart',
@@ -448,8 +452,6 @@ Future<Null> _analyzeProject(String workingDir, {String target}) async {
     ..addAll(dartVmFlags)
     ..add(flutterToolsPath)
     ..add('analyze');
-  if (target != null)
-    args.add(target);
 
   final ProcessResult exec = await Process.run(
     '$dartSdkPath/bin/dart',
@@ -503,7 +505,7 @@ class LoggingProcessManager extends LocalProcessManager {
       Map<String, String> environment,
       bool includeParentEnvironment: true,
       bool runInShell: false,
-      ProcessStartMode mode: ProcessStartMode.NORMAL,
+      ProcessStartMode mode: ProcessStartMode.NORMAL, // ignore: deprecated_member_use
     }) {
     commands.add(command);
     return super.start(

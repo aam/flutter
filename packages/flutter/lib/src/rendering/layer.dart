@@ -2,13 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
 import 'dart:collection';
-import 'dart:ui' as ui show ImageFilter, Picture, SceneBuilder;
+import 'dart:ui' as ui show Image, ImageFilter, Picture, Scene, SceneBuilder;
 import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:vector_math/vector_math_64.dart';
+
+import 'debug.dart';
 
 /// A composited layer.
 ///
@@ -102,10 +105,10 @@ abstract class Layer extends AbstractNode with DiagnosticableTreeMixin {
   String toStringShort() => '${super.toStringShort()}${ owner == null ? " DETACHED" : ""}';
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<Object>('owner', owner, level: parent != null ? DiagnosticLevel.hidden : DiagnosticLevel.info, defaultValue: null));
-    description.add(new DiagnosticsProperty<dynamic>('creator', debugCreator, defaultValue: null, level: DiagnosticLevel.debug));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Object>('owner', owner, level: parent != null ? DiagnosticLevel.hidden : DiagnosticLevel.info, defaultValue: null));
+    properties.add(new DiagnosticsProperty<dynamic>('creator', debugCreator, defaultValue: null, level: DiagnosticLevel.debug));
   }
 }
 
@@ -159,9 +162,9 @@ class PictureLayer extends Layer {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<Rect>('paint bounds', canvasBounds));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Rect>('paint bounds', canvasBounds));
   }
 }
 
@@ -509,13 +512,54 @@ class OffsetLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<Offset>('offset', offset));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Offset>('offset', offset));
+  }
+
+  /// Capture an image of the current state of this layer and its children.
+  ///
+  /// The returned [ui.Image] has uncompressed raw RGBA bytes, will be offset
+  /// by the top-left corner of [bounds], and have dimensions equal to the size
+  /// of [bounds] multiplied by [pixelRatio].
+  ///
+  /// The [pixelRatio] describes the scale between the logical pixels and the
+  /// size of the output image. It is independent of the
+  /// [window.devicePixelRatio] for the device, so specifying 1.0 (the default)
+  /// will give you a 1:1 mapping between logical pixels and the output pixels
+  /// in the image.
+  ///
+  /// See also:
+  ///
+  ///  * [RenderRepaintBoundary.toImage] for a similar API at the render object level.
+  ///  * [dart:ui.Scene.toImage] for more information about the image returned.
+  Future<ui.Image> toImage(Rect bounds, {double pixelRatio: 1.0}) async {
+    assert(bounds != null);
+    assert(pixelRatio != null);
+    final ui.SceneBuilder builder = new ui.SceneBuilder();
+    final Matrix4 transform = new Matrix4.translationValues(bounds.left - offset.dx, bounds.top - offset.dy, 0.0);
+    transform.scale(pixelRatio, pixelRatio);
+    builder.pushTransform(transform.storage);
+    addToScene(builder, Offset.zero);
+    final ui.Scene scene = builder.build();
+    try {
+      // Size is rounded up to the next pixel to make sure we don't clip off
+      // anything.
+      return await scene.toImage(
+        (pixelRatio * bounds.width).ceil(),
+        (pixelRatio * bounds.height).ceil(),
+      );
+    } finally {
+      scene.dispose();
+    }
   }
 }
 
 /// A composite layer that clips its children using a rectangle.
+///
+/// When debugging, setting [debugDisableClipLayers] to true will cause this
+/// layer to be skipped (directly replaced by its children). This can be helpful
+/// to track down the cause of performance problems.
 class ClipRectLayer extends ContainerLayer {
   /// Creates a layer with a rectangular clip.
   ///
@@ -531,19 +575,30 @@ class ClipRectLayer extends ContainerLayer {
 
   @override
   void addToScene(ui.SceneBuilder builder, Offset layerOffset) {
-    builder.pushClipRect(clipRect.shift(layerOffset));
+    bool enabled = true;
+    assert(() {
+      enabled = !debugDisableClipLayers;
+      return true;
+    }());
+    if (enabled)
+      builder.pushClipRect(clipRect.shift(layerOffset));
     addChildrenToScene(builder, layerOffset);
-    builder.pop();
+    if (enabled)
+      builder.pop();
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<Rect>('clipRect', clipRect));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Rect>('clipRect', clipRect));
   }
 }
 
 /// A composite layer that clips its children using a rounded rectangle.
+///
+/// When debugging, setting [debugDisableClipLayers] to true will cause this
+/// layer to be skipped (directly replaced by its children). This can be helpful
+/// to track down the cause of performance problems.
 class ClipRRectLayer extends ContainerLayer {
   /// Creates a layer with a rounded-rectangular clip.
   ///
@@ -559,19 +614,30 @@ class ClipRRectLayer extends ContainerLayer {
 
   @override
   void addToScene(ui.SceneBuilder builder, Offset layerOffset) {
-    builder.pushClipRRect(clipRRect.shift(layerOffset));
+    bool enabled = true;
+    assert(() {
+      enabled = !debugDisableClipLayers;
+      return true;
+    }());
+    if (enabled)
+      builder.pushClipRRect(clipRRect.shift(layerOffset));
     addChildrenToScene(builder, layerOffset);
-    builder.pop();
+    if (enabled)
+      builder.pop();
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<RRect>('clipRRect', clipRRect));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<RRect>('clipRRect', clipRRect));
   }
 }
 
 /// A composite layer that clips its children using a path.
+///
+/// When debugging, setting [debugDisableClipLayers] to true will cause this
+/// layer to be skipped (directly replaced by its children). This can be helpful
+/// to track down the cause of performance problems.
 class ClipPathLayer extends ContainerLayer {
   /// Creates a layer with a path-based clip.
   ///
@@ -587,9 +653,16 @@ class ClipPathLayer extends ContainerLayer {
 
   @override
   void addToScene(ui.SceneBuilder builder, Offset layerOffset) {
-    builder.pushClipPath(clipPath.shift(layerOffset));
+    bool enabled = true;
+    assert(() {
+      enabled = !debugDisableClipLayers;
+      return true;
+    }());
+    if (enabled)
+      builder.pushClipPath(clipPath.shift(layerOffset));
     addChildrenToScene(builder, layerOffset);
-    builder.pop();
+    if (enabled)
+      builder.pop();
   }
 }
 
@@ -639,13 +712,17 @@ class TransformLayer extends OffsetLayer {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new TransformProperty('transform', transform));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new TransformProperty('transform', transform));
   }
 }
 
 /// A composited layer that makes its children partially transparent.
+///
+/// When debugging, setting [debugDisableOpacityLayers] to true will cause this
+/// layer to be skipped (directly replaced by its children). This can be helpful
+/// to track down the cause of performance problems.
 class OpacityLayer extends ContainerLayer {
   /// Creates an opacity layer.
   ///
@@ -664,15 +741,22 @@ class OpacityLayer extends ContainerLayer {
 
   @override
   void addToScene(ui.SceneBuilder builder, Offset layerOffset) {
-    builder.pushOpacity(alpha);
+    bool enabled = true;
+    assert(() {
+      enabled = !debugDisableOpacityLayers;
+      return true;
+    }());
+    if (enabled)
+      builder.pushOpacity(alpha);
     addChildrenToScene(builder, layerOffset);
-    builder.pop();
+    if (enabled)
+      builder.pop();
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new IntProperty('alpha', alpha));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new IntProperty('alpha', alpha));
   }
 }
 
@@ -710,11 +794,11 @@ class ShaderMaskLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<Shader>('shader', shader));
-    description.add(new DiagnosticsProperty<Rect>('maskRect', maskRect));
-    description.add(new DiagnosticsProperty<BlendMode>('blendMode', blendMode));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Shader>('shader', shader));
+    properties.add(new DiagnosticsProperty<Rect>('maskRect', maskRect));
+    properties.add(new DiagnosticsProperty<BlendMode>('blendMode', blendMode));
   }
 }
 
@@ -745,6 +829,10 @@ class BackdropFilterLayer extends ContainerLayer {
 /// For example, the layer casts a shadow according to its geometry and the
 /// relative position of lights and other physically modelled objects in the
 /// scene.
+///
+/// When debugging, setting [debugDisablePhysicalShapeLayers] to true will cause this
+/// layer to be skipped (directly replaced by its children). This can be helpful
+/// to track down the cause of performance problems.
 class PhysicalModelLayer extends ContainerLayer {
   /// Creates a composited layer that uses a physical model to producing
   /// lighting effects.
@@ -754,9 +842,11 @@ class PhysicalModelLayer extends ContainerLayer {
     @required this.clipPath,
     @required this.elevation,
     @required this.color,
+    @required this.shadowColor,
   }) : assert(clipPath != null),
        assert(elevation != null),
-       assert(color != null);
+       assert(color != null),
+       assert(shadowColor != null);
 
   /// The path to clip in the parent's coordinate system.
   ///
@@ -768,6 +858,12 @@ class PhysicalModelLayer extends ContainerLayer {
   ///
   /// The scene must be explicitly recomposited after this property is changed
   /// (as described at [Layer]).
+  ///
+  /// In tests, the [debugDisableShadows] flag is set to true by default.
+  /// Several widgets and render objects force all elevations to zero when this
+  /// flag is set. For this reason, this property will often be set to zero in
+  /// tests even if the layer should be raised. To verify the actual value,
+  /// consider setting [debugDisableShadows] to false in your test.
   double elevation;
 
   /// The background color.
@@ -776,22 +872,34 @@ class PhysicalModelLayer extends ContainerLayer {
   /// (as described at [Layer]).
   Color color;
 
+  /// The shadow color.
+  Color shadowColor;
+
   @override
   void addToScene(ui.SceneBuilder builder, Offset layerOffset) {
-    builder.pushPhysicalShape(
-      path: clipPath.shift(layerOffset),
-      elevation: elevation,
-      color: color,
-    );
+    bool enabled = true;
+    assert(() {
+      enabled = !debugDisablePhysicalShapeLayers;
+      return true;
+    }());
+    if (enabled) {
+      builder.pushPhysicalShape(
+        path: clipPath.shift(layerOffset),
+        elevation: elevation,
+        color: color,
+        shadowColor: shadowColor,
+      );
+    }
     addChildrenToScene(builder, layerOffset);
-    builder.pop();
+    if (enabled)
+      builder.pop();
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DoubleProperty('elevation', elevation));
-    description.add(new DiagnosticsProperty<Color>('color', color));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DoubleProperty('elevation', elevation));
+    properties.add(new DiagnosticsProperty<Color>('color', color));
   }
 }
 
@@ -896,10 +1004,10 @@ class LeaderLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<Offset>('offset', offset));
-    description.add(new DiagnosticsProperty<LayerLink>('link', link));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<Offset>('offset', offset));
+    properties.add(new DiagnosticsProperty<LayerLink>('link', link));
   }
 }
 
@@ -1085,9 +1193,9 @@ class FollowerLayer extends ContainerLayer {
   }
 
   @override
-  void debugFillProperties(DiagnosticPropertiesBuilder description) {
-    super.debugFillProperties(description);
-    description.add(new DiagnosticsProperty<LayerLink>('link', link));
-    description.add(new TransformProperty('transform', getLastTransform(), defaultValue: null));
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(new DiagnosticsProperty<LayerLink>('link', link));
+    properties.add(new TransformProperty('transform', getLastTransform(), defaultValue: null));
   }
 }

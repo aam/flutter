@@ -13,22 +13,25 @@ import '../doctor.dart';
 import 'cocoapods.dart';
 import 'mac.dart';
 
-IOSWorkflow get iosWorkflow => context.putIfAbsent(IOSWorkflow, () => new IOSWorkflow());
+IOSWorkflow get iosWorkflow => context[IOSWorkflow];
 
 class IOSWorkflow extends DoctorValidator implements Workflow {
-  IOSWorkflow() : super('iOS toolchain - develop for iOS devices');
+  const IOSWorkflow() : super('iOS toolchain - develop for iOS devices');
 
   @override
   bool get appliesToHostPlatform => platform.isMacOS;
 
   // We need xcode (+simctl) to list simulator devices, and libimobiledevice to list real devices.
   @override
-  bool get canListDevices => xcode.isInstalledAndMeetsVersionCheck;
+  bool get canListDevices => xcode.isInstalledAndMeetsVersionCheck && xcode.isSimctlInstalled;
 
   // We need xcode to launch simulator devices, and ideviceinstaller and ios-deploy
   // for real devices.
   @override
   bool get canLaunchDevices => xcode.isInstalledAndMeetsVersionCheck;
+
+  @override
+  bool get canListEmulators => false;
 
   Future<bool> get hasIDeviceInstaller => exitsHappyAsync(<String>['ideviceinstaller', '-h']);
 
@@ -68,10 +71,10 @@ class IOSWorkflow extends DoctorValidator implements Workflow {
 
       messages.add(new ValidationMessage('Xcode at ${xcode.xcodeSelectPath}'));
 
-      xcodeVersionInfo = xcode.xcodeVersionText;
+      xcodeVersionInfo = xcode.versionText;
       if (xcodeVersionInfo.contains(','))
         xcodeVersionInfo = xcodeVersionInfo.substring(0, xcodeVersionInfo.indexOf(','));
-      messages.add(new ValidationMessage(xcode.xcodeVersionText));
+      messages.add(new ValidationMessage(xcode.versionText));
 
       if (!xcode.isInstalledAndMeetsVersionCheck) {
         xcodeStatus = ValidationType.partial;
@@ -87,11 +90,11 @@ class IOSWorkflow extends DoctorValidator implements Workflow {
           'Xcode end user license agreement not signed; open Xcode or run the command \'sudo xcodebuild -license\'.'
         ));
       }
-      if ((await macDevMode).contains('disabled')) {
+      if (!xcode.isSimctlInstalled) {
         xcodeStatus = ValidationType.partial;
         messages.add(new ValidationMessage.error(
-          'Your Mac needs to enabled for developer mode before using Xcode for the first time.\n'
-          'Run \'sudo DevToolsSecurity -enable\' to enable developer mode.'
+          'Xcode requires additional components to be installed in order to run.\n'
+          'Launch Xcode and install additional required components when prompted.'
         ));
       }
 
@@ -171,7 +174,9 @@ class IOSWorkflow extends DoctorValidator implements Workflow {
         }
       }
 
-      if (await cocoaPods.isCocoaPodsInstalledAndMeetsVersionCheck) {
+      final CocoaPodsStatus cocoaPodsStatus = await cocoaPods.evaluateCocoaPodsInstallation;
+
+      if (cocoaPodsStatus == CocoaPodsStatus.recommended) {
         if (await cocoaPods.isCocoaPodsInitialized) {
           messages.add(new ValidationMessage('CocoaPods version ${await cocoaPods.cocoaPodsVersionText}'));
         } else {
@@ -186,7 +191,7 @@ class IOSWorkflow extends DoctorValidator implements Workflow {
         }
       } else {
         brewStatus = ValidationType.partial;
-        if (!await cocoaPods.hasCocoaPods) {
+        if (cocoaPodsStatus == CocoaPodsStatus.notInstalled) {
           messages.add(new ValidationMessage.error(
             'CocoaPods not installed.\n'
             '$noCocoaPodsConsequence\n'
@@ -194,8 +199,8 @@ class IOSWorkflow extends DoctorValidator implements Workflow {
             '$cocoaPodsInstallInstructions'
           ));
         } else {
-          messages.add(new ValidationMessage.error(
-            'CocoaPods out of date ($cocoaPods.cocoaPodsMinimumVersion is required).\n'
+          messages.add(new ValidationMessage.hint(
+            'CocoaPods out of date (${cocoaPods.cocoaPodsRecommendedVersion} is recommended).\n'
             '$noCocoaPodsConsequence\n'
             'To upgrade:\n'
             '$cocoaPodsUpgradeInstructions'

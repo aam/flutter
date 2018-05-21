@@ -38,11 +38,25 @@ void main() {
     return (List<String> command) => new MockProcess(stdout: stdoutStream);
   }
 
+  testUsingContext('licensesAccepted throws if cannot run sdkmanager', () async {
+    processManager.succeed = false;
+    MockAndroidSdk.createSdkDirectory();
+    when(sdk.sdkManagerPath).thenReturn('/foo/bar/sdkmanager');
+    final AndroidWorkflow androidWorkflow = new AndroidWorkflow();
+    expect(androidWorkflow.licensesAccepted, throwsToolExit());
+  }, overrides: <Type, Generator>{
+    AndroidSdk: () => sdk,
+    FileSystem: () => fs,
+    Platform: () => new FakePlatform()..environment = <String, String>{'HOME': '/home/me'},
+    ProcessManager: () => processManager,
+    Stdio: () => stdio,
+  });
+
   testUsingContext('licensesAccepted handles garbage/no output', () async {
     MockAndroidSdk.createSdkDirectory();
     when(sdk.sdkManagerPath).thenReturn('/foo/bar/sdkmanager');
     final AndroidWorkflow androidWorkflow = new AndroidWorkflow();
-    final LicensesAccepted result = await(androidWorkflow.licensesAccepted);
+    final LicensesAccepted result = await androidWorkflow.licensesAccepted;
     expect(result, equals(LicensesAccepted.unknown));
     expect(processManager.commands.first, equals('/foo/bar/sdkmanager'));
     expect(processManager.commands.last, equals('--licenses'));
@@ -63,7 +77,7 @@ void main() {
     ]);
 
     final AndroidWorkflow androidWorkflow = new AndroidWorkflow();
-    final LicensesAccepted result = await(androidWorkflow.licensesAccepted);
+    final LicensesAccepted result = await androidWorkflow.licensesAccepted;
     expect(result, equals(LicensesAccepted.all));
   }, overrides: <Type, Generator>{
     AndroidSdk: () => sdk,
@@ -83,7 +97,7 @@ void main() {
     ]);
 
     final AndroidWorkflow androidWorkflow = new AndroidWorkflow();
-    final LicensesAccepted result = await(androidWorkflow.licensesAccepted);
+    final LicensesAccepted result = await androidWorkflow.licensesAccepted;
     expect(result, equals(LicensesAccepted.some));
   }, overrides: <Type, Generator>{
     AndroidSdk: () => sdk,
@@ -103,7 +117,7 @@ void main() {
     ]);
 
     final AndroidWorkflow androidWorkflow = new AndroidWorkflow();
-    final LicensesAccepted result = await(androidWorkflow.licensesAccepted);
+    final LicensesAccepted result = await androidWorkflow.licensesAccepted;
     expect(result, equals(LicensesAccepted.none));
   }, overrides: <Type, Generator>{
     AndroidSdk: () => sdk,
