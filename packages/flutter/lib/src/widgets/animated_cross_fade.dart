@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
 import 'animated_size.dart';
@@ -100,7 +99,7 @@ typedef Widget AnimatedCrossFadeBuilder(Widget topChild, Key topChildKey, Widget
 ///
 ///  * [AnimatedSize], the lower-level widget which [AnimatedCrossFade] uses to
 ///    automatically change size.
-///  * [AnimatedChildSwitcher], which switches out a child for a new one with a
+///  * [AnimatedSwitcher], which switches out a child for a new one with a
 ///    customizable transition.
 class AnimatedCrossFade extends StatefulWidget {
   /// Creates a cross-fade animation widget.
@@ -114,13 +113,13 @@ class AnimatedCrossFade extends StatefulWidget {
     Key key,
     @required this.firstChild,
     @required this.secondChild,
-    this.firstCurve: Curves.linear,
-    this.secondCurve: Curves.linear,
-    this.sizeCurve: Curves.linear,
-    this.alignment: Alignment.topCenter,
+    this.firstCurve = Curves.linear,
+    this.secondCurve = Curves.linear,
+    this.sizeCurve = Curves.linear,
+    this.alignment = Alignment.topCenter,
     @required this.crossFadeState,
     @required this.duration,
-    this.layoutBuilder: defaultLayoutBuilder,
+    this.layoutBuilder = defaultLayoutBuilder,
   }) : assert(firstChild != null),
        assert(secondChild != null),
        assert(firstCurve != null),

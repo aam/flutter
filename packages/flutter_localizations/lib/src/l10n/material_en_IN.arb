@@ -34,5 +34,10 @@
   "viewLicensesButtonLabel": "VIEW LICENCES",
   "anteMeridiemAbbreviation": "AM",
   "postMeridiemAbbreviation": "PM",
-  "modalBarrierDismissLabel": "Dismiss"
+  "modalBarrierDismissLabel": "Dismiss",
+  "drawerLabel": "Navigation menu",
+  "popupMenuLabel": "Pop-up menu",
+  "dialogLabel": "Dialogue",
+  "alertDialogLabel": "Alert",
+  "searchFieldLabel": "Search"
 }
