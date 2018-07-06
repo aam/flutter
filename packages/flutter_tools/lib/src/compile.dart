@@ -67,10 +67,13 @@ class _StdoutHandler {
   }
 }
 
-// TODO(aam): Since frontend_server and flutter tools run on the same
-// version of dart sdk, there is no need for frontend_server anymore.
-Future<CompilerOutput> compile(
-    {String sdkRoot,
+class KernelCompiler {
+  const KernelCompiler();
+
+  // TODO(aam): Since frontend_server and flutter tools run on the same
+  // version of dart sdk, there is no need for frontend_server anymore.
+  Future<CompilerOutput> compile({
+    String sdkRoot,
     String mainPath,
     String outputFilePath,
     String depFilePath,
