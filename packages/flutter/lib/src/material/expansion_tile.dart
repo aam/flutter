@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'colors.dart';
@@ -11,7 +10,7 @@ import 'list_tile.dart';
 import 'theme.dart';
 import 'theme_data.dart';
 
-const Duration _kExpand = const Duration(milliseconds: 200);
+const Duration _kExpand = Duration(milliseconds: 200);
 
 /// A single-line [ListTile] with a trailing button that expands or collapses
 /// the tile to reveal or hide the [children].
@@ -38,9 +37,9 @@ class ExpansionTile extends StatefulWidget {
     @required this.title,
     this.backgroundColor,
     this.onExpansionChanged,
-    this.children: const <Widget>[],
+    this.children = const <Widget>[],
     this.trailing,
-    this.initiallyExpanded: false,
+    this.initiallyExpanded = false,
   }) : assert(initiallyExpanded != null),
        super(key: key);
 
@@ -76,7 +75,7 @@ class ExpansionTile extends StatefulWidget {
   final bool initiallyExpanded;
 
   @override
-  _ExpansionTileState createState() => new _ExpansionTileState();
+  _ExpansionTileState createState() => _ExpansionTileState();
 }
 
 class _ExpansionTileState extends State<ExpansionTile> with SingleTickerProviderStateMixin {
@@ -94,14 +93,14 @@ class _ExpansionTileState extends State<ExpansionTile> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _controller = new AnimationController(duration: _kExpand, vsync: this);
-    _easeOutAnimation = new CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _easeInAnimation = new CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-    _borderColor = new ColorTween();
-    _headerColor = new ColorTween();
-    _iconColor = new ColorTween();
-    _iconTurns = new Tween<double>(begin: 0.0, end: 0.5).animate(_easeInAnimation);
-    _backgroundColor = new ColorTween();
+    _controller = AnimationController(duration: _kExpand, vsync: this);
+    _easeOutAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _easeInAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+    _borderColor = ColorTween();
+    _headerColor = ColorTween();
+    _iconColor = ColorTween();
+    _iconTurns = Tween<double>(begin: 0.0, end: 0.5).animate(_easeInAnimation);
+    _backgroundColor = ColorTween();
 
     _isExpanded = PageStorage.of(context)?.readState(context) ?? widget.initiallyExpanded;
     if (_isExpanded)
@@ -135,34 +134,34 @@ class _ExpansionTileState extends State<ExpansionTile> with SingleTickerProvider
     final Color borderSideColor = _borderColor.evaluate(_easeOutAnimation) ?? Colors.transparent;
     final Color titleColor = _headerColor.evaluate(_easeInAnimation);
 
-    return new Container(
-      decoration: new BoxDecoration(
+    return Container(
+      decoration: BoxDecoration(
         color: _backgroundColor.evaluate(_easeOutAnimation) ?? Colors.transparent,
-        border: new Border(
-          top: new BorderSide(color: borderSideColor),
-          bottom: new BorderSide(color: borderSideColor),
+        border: Border(
+          top: BorderSide(color: borderSideColor),
+          bottom: BorderSide(color: borderSideColor),
         )
       ),
-      child: new Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           IconTheme.merge(
-            data: new IconThemeData(color: _iconColor.evaluate(_easeInAnimation)),
-            child: new ListTile(
+            data: IconThemeData(color: _iconColor.evaluate(_easeInAnimation)),
+            child: ListTile(
               onTap: _handleTap,
               leading: widget.leading,
-              title: new DefaultTextStyle(
+              title: DefaultTextStyle(
                 style: Theme.of(context).textTheme.subhead.copyWith(color: titleColor),
                 child: widget.title,
               ),
-              trailing: widget.trailing ?? new RotationTransition(
+              trailing: widget.trailing ?? RotationTransition(
                 turns: _iconTurns,
                 child: const Icon(Icons.expand_more),
               ),
             ),
           ),
-          new ClipRect(
-            child: new Align(
+          ClipRect(
+            child: Align(
               heightFactor: _easeInAnimation.value,
               child: child,
             ),
@@ -185,10 +184,10 @@ class _ExpansionTileState extends State<ExpansionTile> with SingleTickerProvider
     _backgroundColor.end = widget.backgroundColor;
 
     final bool closed = !_isExpanded && _controller.isDismissed;
-    return new AnimatedBuilder(
+    return AnimatedBuilder(
       animation: _controller.view,
       builder: _buildChildren,
-      child: closed ? null : new Column(children: widget.children),
+      child: closed ? null : Column(children: widget.children),
     );
 
   }

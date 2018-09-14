@@ -39,8 +39,8 @@ class Dialog extends StatelessWidget {
   const Dialog({
     Key key,
     this.child,
-    this.insetAnimationDuration: const Duration(milliseconds: 100),
-    this.insetAnimationCurve: Curves.decelerate,
+    this.insetAnimationDuration = const Duration(milliseconds: 100),
+    this.insetAnimationCurve = Curves.decelerate,
   }) : super(key: key);
 
   /// The widget below this widget in the tree.
@@ -66,20 +66,20 @@ class Dialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return new AnimatedPadding(
+    return AnimatedPadding(
       padding: MediaQuery.of(context).viewInsets + const EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0),
       duration: insetAnimationDuration,
       curve: insetAnimationCurve,
-      child: new MediaQuery.removeViewInsets(
+      child: MediaQuery.removeViewInsets(
         removeLeft: true,
         removeTop: true,
         removeRight: true,
         removeBottom: true,
         context: context,
-        child: new Center(
-          child: new ConstrainedBox(
+        child: Center(
+          child: ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 280.0),
-            child: new Material(
+            child: Material(
               elevation: 24.0,
               color: _getColor(context),
               type: MaterialType.card,
@@ -121,19 +121,19 @@ class Dialog extends StatelessWidget {
 ///     context: context,
 ///     barrierDismissible: false, // user must tap button!
 ///     builder: (BuildContext context) {
-///       return new AlertDialog(
-///         title: new Text('Rewind and remember'),
-///         content: new SingleChildScrollView(
-///           child: new ListBody(
+///       return AlertDialog(
+///         title: Text('Rewind and remember'),
+///         content: SingleChildScrollView(
+///           child: ListBody(
 ///             children: <Widget>[
-///               new Text('You will never be satisfied.'),
-///               new Text('You\’re like me. I’m never satisfied.'),
+///               Text('You will never be satisfied.'),
+///               Text('You\’re like me. I’m never satisfied.'),
 ///             ],
 ///           ),
 ///         ),
 ///         actions: <Widget>[
-///           new FlatButton(
-///             child: new Text('Regret'),
+///           FlatButton(
+///             child: Text('Regret'),
 ///             onPressed: () {
 ///               Navigator.of(context).pop();
 ///             },
@@ -164,8 +164,9 @@ class AlertDialog extends StatelessWidget {
     this.title,
     this.titlePadding,
     this.content,
-    this.contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 24.0),
+    this.contentPadding = const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 24.0),
     this.actions,
+    this.semanticLabel,
   }) : assert(contentPadding != null),
        super(key: key);
 
@@ -216,25 +217,48 @@ class AlertDialog extends StatelessWidget {
   /// from the [actions].
   final List<Widget> actions;
 
+  /// The semantic label of the dialog used by accessibility frameworks to
+  /// announce screen transitions when the dialog is opened and closed.
+  ///
+  /// If this label is not provided, a semantic label will be infered from the
+  /// [title] if it is not null.  If there is no title, the label will be taken
+  /// from [MaterialLocalizations.alertDialogLabel].
+  ///
+  /// See also:
+  ///
+  ///  * [SemanticsConfiguration.isRouteName], for a description of how this
+  ///    value is used.
+  final String semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> children = <Widget>[];
+    String label = semanticLabel;
 
     if (title != null) {
-      children.add(new Padding(
-        padding: titlePadding ?? new EdgeInsets.fromLTRB(24.0, 24.0, 24.0, content == null ? 20.0 : 0.0),
-        child: new DefaultTextStyle(
+      children.add(Padding(
+        padding: titlePadding ?? EdgeInsets.fromLTRB(24.0, 24.0, 24.0, content == null ? 20.0 : 0.0),
+        child: DefaultTextStyle(
           style: Theme.of(context).textTheme.title,
-          child: title,
+          child: Semantics(child: title, namesRoute: true),
         ),
       ));
+    } else {
+      switch (defaultTargetPlatform) {
+        case TargetPlatform.iOS:
+          label = semanticLabel;
+          break;
+        case TargetPlatform.android:
+        case TargetPlatform.fuchsia:
+          label = semanticLabel ?? MaterialLocalizations.of(context)?.alertDialogLabel;
+      }
     }
 
     if (content != null) {
-      children.add(new Flexible(
-        child: new Padding(
+      children.add(Flexible(
+        child: Padding(
           padding: contentPadding,
-          child: new DefaultTextStyle(
+          child: DefaultTextStyle(
             style: Theme.of(context).textTheme.subhead,
             child: content,
           ),
@@ -243,22 +267,29 @@ class AlertDialog extends StatelessWidget {
     }
 
     if (actions != null) {
-      children.add(new ButtonTheme.bar(
-        child: new ButtonBar(
+      children.add(ButtonTheme.bar(
+        child: ButtonBar(
           children: actions,
         ),
       ));
     }
 
-    return new Dialog(
-      child: new IntrinsicWidth(
-        child: new Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: children,
-        ),
+    Widget dialogChild = IntrinsicWidth(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
       ),
     );
+
+    if (label != null)
+      dialogChild = Semantics(
+        namesRoute: true,
+        label: label,
+        child: dialogChild
+      );
+
+    return Dialog(child: dialogChild);
   }
 }
 
@@ -278,7 +309,7 @@ class AlertDialog extends StatelessWidget {
 /// ## Sample code
 ///
 /// ```dart
-/// new SimpleDialogOption(
+/// SimpleDialogOption(
 ///   onPressed: () { Navigator.pop(context, Department.treasury); },
 ///   child: const Text('Treasury department'),
 /// )
@@ -314,9 +345,9 @@ class SimpleDialogOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return new InkWell(
+    return InkWell(
       onTap: onPressed,
-      child: new Padding(
+      child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 24.0),
         child: child
       ),
@@ -357,14 +388,14 @@ class SimpleDialogOption extends StatelessWidget {
 ///   switch (await showDialog<Department>(
 ///     context: context,
 ///     builder: (BuildContext context) {
-///       return new SimpleDialog(
+///       return SimpleDialog(
 ///         title: const Text('Select assignment'),
 ///         children: <Widget>[
-///           new SimpleDialogOption(
+///           SimpleDialogOption(
 ///             onPressed: () { Navigator.pop(context, Department.treasury); },
 ///             child: const Text('Treasury department'),
 ///           ),
-///           new SimpleDialogOption(
+///           SimpleDialogOption(
 ///             onPressed: () { Navigator.pop(context, Department.state); },
 ///             child: const Text('State department'),
 ///           ),
@@ -399,9 +430,10 @@ class SimpleDialog extends StatelessWidget {
   const SimpleDialog({
     Key key,
     this.title,
-    this.titlePadding: const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 0.0),
+    this.titlePadding = const EdgeInsets.fromLTRB(24.0, 24.0, 24.0, 0.0),
     this.children,
-    this.contentPadding: const EdgeInsets.fromLTRB(0.0, 12.0, 0.0, 16.0),
+    this.contentPadding = const EdgeInsets.fromLTRB(0.0, 12.0, 0.0, 16.0),
+    this.semanticLabel,
   }) : assert(titlePadding != null),
        assert(contentPadding != null),
        super(key: key);
@@ -443,102 +475,93 @@ class SimpleDialog extends StatelessWidget {
   /// the top padding ends up being 24 pixels.
   final EdgeInsetsGeometry contentPadding;
 
+  /// The semantic label of the dialog used by accessibility frameworks to
+  /// announce screen transitions when the dialog is opened and closed.
+  ///
+  /// If this label is not provided, a semantic label will be infered from the
+  /// [title] if it is not null.  If there is no title, the label will be taken
+  /// from [MaterialLocalizations.dialogLabel].
+  ///
+  /// See also:
+  ///
+  ///  * [SemanticsConfiguration.isRouteName], for a description of how this
+  ///    value is used.
+  final String semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final List<Widget> body = <Widget>[];
+    String label = semanticLabel;
 
     if (title != null) {
-      body.add(new Padding(
+      body.add(Padding(
         padding: titlePadding,
-        child: new DefaultTextStyle(
+        child: DefaultTextStyle(
           style: Theme.of(context).textTheme.title,
-          child: title,
+          child: Semantics(namesRoute: true, child: title),
         )
       ));
+    } else {
+      switch (defaultTargetPlatform) {
+        case TargetPlatform.iOS:
+          label = semanticLabel;
+          break;
+        case TargetPlatform.android:
+        case TargetPlatform.fuchsia:
+          label = semanticLabel ?? MaterialLocalizations.of(context)?.dialogLabel;
+      }
     }
 
     if (children != null) {
-      body.add(new Flexible(
-        child: new SingleChildScrollView(
+      body.add(Flexible(
+        child: SingleChildScrollView(
           padding: contentPadding,
-          child: new ListBody(children: children),
+          child: ListBody(children: children),
         )
       ));
     }
 
-    return new Dialog(
-      child: new IntrinsicWidth(
-        stepWidth: 56.0,
-        child: new ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 280.0),
-          child: new Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: body,
-          )
-        )
-      )
+    Widget dialogChild = IntrinsicWidth(
+      stepWidth: 56.0,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 280.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: body,
+        ),
+      ),
     );
+
+    if (label != null)
+      dialogChild = Semantics(
+        namesRoute: true,
+        label: label,
+        child: dialogChild,
+      );
+    return Dialog(child: dialogChild);
   }
 }
 
-class _DialogRoute<T> extends PopupRoute<T> {
-  _DialogRoute({
-    @required this.theme,
-    bool barrierDismissible: true,
-    this.barrierLabel,
-    @required this.child,
-    RouteSettings settings,
-  }) : assert(barrierDismissible != null),
-       _barrierDismissible = barrierDismissible,
-       super(settings: settings);
-
-  final Widget child;
-  final ThemeData theme;
-
-  @override
-  Duration get transitionDuration => const Duration(milliseconds: 150);
-
-  @override
-  bool get barrierDismissible => _barrierDismissible;
-  final bool _barrierDismissible;
-
-  @override
-  Color get barrierColor => Colors.black54;
-
-  @override
-  final String barrierLabel;
-
-  @override
-  Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
-    return new SafeArea(
-      child: new Builder(
-        builder: (BuildContext context) {
-          return theme != null ? new Theme(data: theme, child: child) : child;
-        }
-      ),
-    );
-  }
-
-  @override
-  Widget buildTransitions(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
-    return new FadeTransition(
-      opacity: new CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOut
-      ),
-      child: child
-    );
-  }
+Widget _buildMaterialDialogTransitions(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
+  return FadeTransition(
+    opacity: CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOut,
+    ),
+    child: child,
+  );
 }
 
-/// Displays a dialog above the current contents of the app.
+/// Displays a Material dialog above the current contents of the app, with
+/// Material entrance and exit animations, modal barrier color, and modal
+/// barrier behavior (dialog is dismissible with a tap on the barrier).
 ///
 /// This function takes a `builder` which typically builds a [Dialog] widget.
-/// Content below the dialog is dimmed with a [ModalBarrier]. This widget does
-/// not share a context with the location that `showDialog` is originally
-/// called from. Use a [StatefulBuilder] or a custom [StatefulWidget] if the
-/// dialog needs to update dynamically.
+/// Content below the dialog is dimmed with a [ModalBarrier]. The widget
+/// returned by the `builder` does not share a context with the location that
+/// `showDialog` is originally called from. Use a [StatefulBuilder] or a
+/// custom [StatefulWidget] if the dialog needs to update dynamically.
 ///
 /// The `context` argument is used to look up the [Navigator] and [Theme] for
 /// the dialog. It is only used when the method is called. Its corresponding
@@ -552,17 +575,19 @@ class _DialogRoute<T> extends PopupRoute<T> {
 /// The dialog route created by this method is pushed to the root navigator.
 /// If the application has multiple [Navigator] objects, it may be necessary to
 /// call `Navigator.of(context, rootNavigator: true).pop(result)` to close the
-/// dialog rather just 'Navigator.pop(context, result)`.
+/// dialog rather than just `Navigator.pop(context, result)`.
 ///
 /// See also:
 ///  * [AlertDialog], for dialogs that have a row of buttons below a body.
 ///  * [SimpleDialog], which handles the scrolling of the contents and does
 ///    not show buttons below its body.
 ///  * [Dialog], on which [SimpleDialog] and [AlertDialog] are based.
+///  * [showCupertinoDialog], which displays an iOS-style dialog.
+///  * [showGeneralDialog], which allows for customization of the dialog popup.
 ///  * <https://material.google.com/components/dialogs.html>
 Future<T> showDialog<T>({
   @required BuildContext context,
-  bool barrierDismissible: true,
+  bool barrierDismissible = true,
   @Deprecated(
     'Instead of using the "child" argument, return the child from a closure '
     'provided to the "builder" argument. This will ensure that the BuildContext '
@@ -570,11 +595,26 @@ Future<T> showDialog<T>({
   ) Widget child,
   WidgetBuilder builder,
 }) {
-  assert(child == null || builder == null); // ignore: deprecated_member_use
-  return Navigator.of(context, rootNavigator: true).push(new _DialogRoute<T>(
-    child: child ?? new Builder(builder: builder), // ignore: deprecated_member_use
-    theme: Theme.of(context, shadowThemeOnly: true),
+  assert(child == null || builder == null);
+  return showGeneralDialog(
+    context: context,
+    pageBuilder: (BuildContext buildContext, Animation<double> animation, Animation<double> secondaryAnimation) {
+      final ThemeData theme = Theme.of(context, shadowThemeOnly: true);
+      final Widget pageChild =  child ?? Builder(builder: builder);
+      return SafeArea(
+        child: Builder(
+          builder: (BuildContext context) {
+            return theme != null
+                ? Theme(data: theme, child: pageChild)
+                : pageChild;
+          }
+        ),
+      );
+    },
     barrierDismissible: barrierDismissible,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-  ));
+    barrierColor: Colors.black54,
+    transitionDuration: const Duration(milliseconds: 150),
+    transitionBuilder: _buildMaterialDialogTransitions,
+  );
 }

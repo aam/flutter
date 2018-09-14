@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
-
 import 'basic.dart';
 import 'framework.dart';
 import 'layout_builder.dart';
@@ -52,6 +50,6 @@ class OrientationBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return new LayoutBuilder(builder: _buildWithConstraints);
+    return LayoutBuilder(builder: _buildWithConstraints);
   }
 }

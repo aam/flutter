@@ -5,10 +5,11 @@
 import 'dart:async';
 
 import '../android/apk.dart';
+import '../project.dart';
 import 'build.dart';
 
 class BuildApkCommand extends BuildSubCommand {
-  BuildApkCommand({bool verboseHelp: false}) {
+  BuildApkCommand({bool verboseHelp = false}) {
     usesTargetOption();
     addBuildModeFlags();
     usesFlavorOption();
@@ -17,13 +18,8 @@ class BuildApkCommand extends BuildSubCommand {
     usesBuildNameOption();
 
     argParser
-      ..addFlag('preview-dart-2',
-        defaultsTo: true,
-        hide: !verboseHelp,
-        help: 'Preview Dart 2.0 functionality.',
-      )
       ..addFlag('track-widget-creation', negatable: false, hide: !verboseHelp)
-      ..addFlag('prefer-shared-library',
+      ..addFlag('build-shared-library',
         negatable: false,
         help: 'Whether to prefer compiling to a *.so file (android only).',
       )
@@ -44,6 +40,10 @@ class BuildApkCommand extends BuildSubCommand {
   @override
   Future<Null> runCommand() async {
     await super.runCommand();
-    await buildApk(buildInfo: getBuildInfo(), target: targetFile);
+    await buildApk(
+      project: await FlutterProject.current(),
+      target: targetFile,
+      buildInfo: getBuildInfo(),
+    );
   }
 }

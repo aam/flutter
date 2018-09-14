@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:async';
+
+import 'package:file/file.dart';
+import 'package:file/memory.dart';
+import 'package:flutter_tools/src/base/file_system.dart';
 import 'package:flutter_tools/src/cache.dart';
 import 'package:flutter_tools/src/flutter_manifest.dart';
 
-import 'package:test/test.dart';
-
 import 'src/common.dart';
 import 'src/context.dart';
+import 'src/pubspec_schema.dart';
 
 void main() {
   setUpAll(() {
@@ -356,6 +360,192 @@ flutter:
 ''';
       final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
       expect(flutterManifest.isEmpty, false);
+      expect(flutterManifest.isModule, false);
+      expect(flutterManifest.isPlugin, false);
+      expect(flutterManifest.androidPackage, null);
+    });
+
+    test('allows a module declaration', () async {
+      const String manifest = '''
+name: test
+flutter:
+  module:
+    androidPackage: com.example
+''';
+      final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
+      expect(flutterManifest.isModule, true);
+      expect(flutterManifest.androidPackage, 'com.example');
+    });
+
+    test('allows a plugin declaration', () async {
+      const String manifest = '''
+name: test
+flutter:
+  plugin:
+    androidPackage: com.example
+''';
+      final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
+      expect(flutterManifest.isPlugin, true);
+      expect(flutterManifest.androidPackage, 'com.example');
+    });
+
+    Future<void> checkManifestVersion({
+      String manifest,
+      String expectedAppVersion,
+      String expectedBuildName,
+      int expectedBuildNumber,
+    }) async {
+      final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
+      expect(flutterManifest.appVersion, expectedAppVersion);
+      expect(flutterManifest.buildName, expectedBuildName);
+      expect(flutterManifest.buildNumber, expectedBuildNumber);
+    }
+
+    test('parses major.minor.patch+build version clause', () async {
+      const String manifest = '''
+name: test
+version: 1.0.0+2
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+      await checkManifestVersion(
+        manifest: manifest,
+        expectedAppVersion: '1.0.0+2',
+        expectedBuildName: '1.0.0',
+        expectedBuildNumber: 2,
+      );
+    });
+
+    test('parses major.minor+build version clause', () async {
+      const String manifest = '''
+name: test
+version: 1.0+2
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+      await checkManifestVersion(
+        manifest: manifest,
+        expectedAppVersion: '1.0+2',
+        expectedBuildName: '1.0',
+        expectedBuildNumber: 2,
+      );
+    });
+
+    test('parses major+build version clause', () async {
+      const String manifest = '''
+name: test
+version: 1+2
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+      await checkManifestVersion(
+        manifest: manifest,
+        expectedAppVersion: '1+2',
+        expectedBuildName: '1',
+        expectedBuildNumber: 2,
+      );
+    });
+
+    test('parses major version clause', () async {
+      const String manifest = '''
+name: test
+version: 1
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+      await checkManifestVersion(
+        manifest: manifest,
+        expectedAppVersion: '1',
+        expectedBuildName: '1',
+        expectedBuildNumber: null,
+      );
+    });
+
+    test('parses empty version clause', () async {
+      const String manifest = '''
+name: test
+version:
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+      await checkManifestVersion(
+        manifest: manifest,
+        expectedAppVersion: null,
+        expectedBuildName: null,
+        expectedBuildNumber: null,
+      );
+    });
+    test('parses no version clause', () async {
+      const String manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+      await checkManifestVersion(
+        manifest: manifest,
+        expectedAppVersion: null,
+        expectedBuildName: null,
+        expectedBuildNumber: null,
+      );
     });
   });
+
+  group('FlutterManifest with MemoryFileSystem', () {
+    Future<void> assertSchemaIsReadable() async {
+      const String manifest = '''
+name: test
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+''';
+
+      final FlutterManifest flutterManifest = await FlutterManifest.createFromString(manifest);
+      expect(flutterManifest.isEmpty, false);
+    }
+
+    void testUsingContextAndFs(String description, FileSystem filesystem,
+        dynamic testMethod()) {
+      testUsingContext(description,
+              () async {
+            writeEmptySchemaFile(filesystem);
+            testMethod();
+      },
+          overrides: <Type, Generator>{
+            FileSystem: () => filesystem,
+          }
+      );
+    }
+
+    testUsingContext('Validate manifest on original fs', () {
+      assertSchemaIsReadable();
+    });
+
+    testUsingContextAndFs('Validate manifest on Posix FS',
+        MemoryFileSystem(style: FileSystemStyle.posix), () {
+          assertSchemaIsReadable();
+        }
+    );
+
+    testUsingContextAndFs('Validate manifest on Windows FS',
+        MemoryFileSystem(style: FileSystemStyle.windows), () {
+          assertSchemaIsReadable();
+        }
+    );
+
+  });
+
 }
+

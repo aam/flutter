@@ -15,7 +15,6 @@ import 'package:flutter_tools/src/project.dart';
 import 'package:flutter_tools/src/version.dart';
 import 'package:mockito/mockito.dart';
 import 'package:process/process.dart';
-import 'package:test/test.dart';
 
 import '../src/common.dart';
 import '../src/context.dart';
@@ -25,7 +24,7 @@ const String frameworkChannel = 'omega';
 
 void main() {
   group('create', () {
-    Directory temp;
+    Directory tempDir;
     Directory projectDir;
     FlutterVersion mockFlutterVersion;
     LoggingProcessManager loggingProcessManager;
@@ -35,19 +34,14 @@ void main() {
     });
 
     setUp(() {
-      loggingProcessManager = new LoggingProcessManager();
-      temp = fs.systemTempDirectory.createTempSync('flutter_tools');
-      projectDir = temp.childDirectory('flutter_project');
-      mockFlutterVersion = new MockFlutterVersion();
+      loggingProcessManager = LoggingProcessManager();
+      tempDir = fs.systemTempDirectory.createTempSync('flutter_tools_create_test.');
+      projectDir = tempDir.childDirectory('flutter_project');
+      mockFlutterVersion = MockFlutterVersion();
     });
 
     tearDown(() {
-      try {
-        temp.deleteSync(recursive: true);
-      } on FileSystemException catch (e) {
-        // ignore errors deleting the temporary directory
-        print('Ignored exception during tearDown: $e');
-      }
+      tryToDelete(tempDir);
     });
 
     // Verify that we create a project that is well-formed.
@@ -186,13 +180,66 @@ void main() {
       );
     }, timeout: allowForRemotePubInvocation);
 
+    testUsingContext('module', () async {
+      return _createProject(
+        projectDir,
+        <String>['--no-pub', '--template=module'],
+        <String>[
+          '.gitignore',
+          '.metadata',
+          'lib/main.dart',
+          'pubspec.yaml',
+          'README.md',
+        ],
+        unexpectedPaths: <String>[
+          '.android/',
+          'android/',
+          'ios/',
+        ]
+      );
+    }, timeout: allowForCreateFlutterProject);
+
+    testUsingContext('module with pub', () async {
+      return _createProject(
+          projectDir,
+          <String>['-t', 'module'],
+          <String>[
+            '.gitignore',
+            '.metadata',
+            'lib/main.dart',
+            'pubspec.lock',
+            'pubspec.yaml',
+            'README.md',
+            '.packages',
+            '.android/build.gradle',
+            '.android/Flutter/build.gradle',
+            '.android/Flutter/src/main/java/io/flutter/facade/Flutter.java',
+            '.android/Flutter/src/main/java/io/flutter/facade/FlutterFragment.java',
+            '.android/Flutter/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java',
+            '.android/Flutter/src/main/AndroidManifest.xml',
+            '.android/gradle.properties',
+            '.android/gradle/wrapper/gradle-wrapper.jar',
+            '.android/gradle/wrapper/gradle-wrapper.properties',
+            '.android/gradlew',
+            '.android/gradlew.bat',
+            '.android/local.properties',
+            '.android/include_flutter.groovy',
+            '.android/settings.gradle',
+          ],
+          unexpectedPaths: <String>[
+            'android/',
+            'ios/',
+          ]
+      );
+    }, timeout: allowForRemotePubInvocation);
+
     // Verify content and formatting
     testUsingContext('content', () async {
       Cache.flutterRoot = '../..';
       when(mockFlutterVersion.frameworkRevision).thenReturn(frameworkRevision);
       when(mockFlutterVersion.channel).thenReturn(frameworkChannel);
 
-      final CreateCommand command = new CreateCommand();
+      final CreateCommand command = CreateCommand();
       final CommandRunner<Null> runner = createTestCommandRunner(command);
 
       await runner.run(<String>['create', '--no-pub', '--org', 'com.foo.bar', projectDir.path]);
@@ -256,7 +303,7 @@ void main() {
     testUsingContext('can re-gen over existing project', () async {
       Cache.flutterRoot = '../..';
 
-      final CreateCommand command = new CreateCommand();
+      final CreateCommand command = CreateCommand();
       final CommandRunner<Null> runner = createTestCommandRunner(command);
 
       await runner.run(<String>['create', '--no-pub', projectDir.path]);
@@ -291,8 +338,9 @@ void main() {
       );
       projectDir.childDirectory('ios').deleteSync(recursive: true);
       await _createProject(projectDir, <String>['--no-pub'], <String>[]);
+      final FlutterProject project = await FlutterProject.fromDirectory(projectDir);
       expect(
-        await new FlutterProject(projectDir).ios.productBundleIdentifier(),
+        project.ios.productBundleIdentifier,
         'com.bar.foo.flutterProject',
       );
     }, timeout: allowForCreateFlutterProject);
@@ -317,8 +365,9 @@ void main() {
           'android/src/main/java/com/example/flutterproject/FlutterProjectPlugin.java',
         ],
       );
+      final FlutterProject project = await FlutterProject.fromDirectory(projectDir);
       expect(
-        await new FlutterProject(projectDir).example.ios.productBundleIdentifier(),
+        project.example.ios.productBundleIdentifier,
         'com.bar.foo.flutterProjectExample',
       );
     }, timeout: allowForCreateFlutterProject);
@@ -345,7 +394,7 @@ void main() {
     testUsingContext('produces sensible error message', () async {
       Cache.flutterRoot = '../..';
 
-      final CreateCommand command = new CreateCommand();
+      final CreateCommand command = CreateCommand();
       final CommandRunner<Null> runner = createTestCommandRunner(command);
 
       expect(
@@ -357,7 +406,7 @@ void main() {
     // Verify that we fail with an error code when the file exists.
     testUsingContext('fails when file exists', () async {
       Cache.flutterRoot = '../..';
-      final CreateCommand command = new CreateCommand();
+      final CreateCommand command = CreateCommand();
       final CommandRunner<Null> runner = createTestCommandRunner(command);
       final File existingFile = fs.file('${projectDir.path.toString()}/bad');
       if (!existingFile.existsSync())
@@ -370,7 +419,7 @@ void main() {
 
     testUsingContext('fails when invalid package name', () async {
       Cache.flutterRoot = '../..';
-      final CreateCommand command = new CreateCommand();
+      final CreateCommand command = CreateCommand();
       final CommandRunner<Null> runner = createTestCommandRunner(command);
       expect(
         runner.run(<String>['create', fs.path.join(projectDir.path, 'invalidName')]),
@@ -381,7 +430,7 @@ void main() {
     testUsingContext('invokes pub offline when requested', () async {
       Cache.flutterRoot = '../..';
 
-      final CreateCommand command = new CreateCommand();
+      final CreateCommand command = CreateCommand();
       final CommandRunner<Null> runner = createTestCommandRunner(command);
 
       await runner.run(<String>['create', '--pub', '--offline', projectDir.path]);
@@ -397,7 +446,7 @@ void main() {
     testUsingContext('invokes pub online when offline not requested', () async {
       Cache.flutterRoot = '../..';
 
-      final CreateCommand command = new CreateCommand();
+      final CreateCommand command = CreateCommand();
       final CommandRunner<Null> runner = createTestCommandRunner(command);
 
       await runner.run(<String>['create', '--pub', projectDir.path]);
@@ -416,18 +465,23 @@ Future<Null> _createProject(
     Directory dir, List<String> createArgs, List<String> expectedPaths,
     { List<String> unexpectedPaths = const <String>[], bool plugin = false}) async {
   Cache.flutterRoot = '../..';
-  final CreateCommand command = new CreateCommand();
+  final CreateCommand command = CreateCommand();
   final CommandRunner<Null> runner = createTestCommandRunner(command);
   final List<String> args = <String>['create'];
   args.addAll(createArgs);
   args.add(dir.path);
   await runner.run(args);
 
+  bool pathExists(String path) {
+    final String fullPath = fs.path.join(dir.path, path);
+    return fs.typeSync(fullPath) != FileSystemEntityType.notFound;
+  }
+
   for (String path in expectedPaths) {
-    expect(fs.file(fs.path.join(dir.path, path)).existsSync(), true, reason: '$path does not exist');
+    expect(pathExists(path), true, reason: '$path does not exist');
   }
   for (String path in unexpectedPaths) {
-    expect(fs.file(fs.path.join(dir.path, path)).existsSync(), false, reason: '$path exists');
+    expect(pathExists(path), false, reason: '$path exists');
   }
 }
 
@@ -436,14 +490,13 @@ Future<Null> _createAndAnalyzeProject(
     { List<String> unexpectedPaths = const <String>[], bool plugin = false }) async {
   await _createProject(dir, createArgs, expectedPaths, unexpectedPaths: unexpectedPaths, plugin: plugin);
   if (plugin) {
-    await _analyzeProject(dir.path, target: fs.path.join(dir.path, 'lib', 'flutter_project.dart'));
-    await _analyzeProject(fs.path.join(dir.path, 'example'));
+    await _analyzeProject(dir.path);
   } else {
     await _analyzeProject(dir.path);
   }
 }
 
-Future<Null> _analyzeProject(String workingDir, {String target}) async {
+Future<Null> _analyzeProject(String workingDir) async {
   final String flutterToolsPath = fs.path.absolute(fs.path.join(
     'bin',
     'flutter_tools.dart',
@@ -453,8 +506,6 @@ Future<Null> _analyzeProject(String workingDir, {String target}) async {
     ..addAll(dartVmFlags)
     ..add(flutterToolsPath)
     ..add('analyze');
-  if (target != null)
-    args.add(target);
 
   final ProcessResult exec = await Process.run(
     '$dartSdkPath/bin/dart',
@@ -506,9 +557,9 @@ class LoggingProcessManager extends LocalProcessManager {
     List<dynamic> command, {
       String workingDirectory,
       Map<String, String> environment,
-      bool includeParentEnvironment: true,
-      bool runInShell: false,
-      ProcessStartMode mode: ProcessStartMode.NORMAL,
+      bool includeParentEnvironment = true,
+      bool runInShell = false,
+      ProcessStartMode mode = ProcessStartMode.normal,
     }) {
     commands.add(command);
     return super.start(

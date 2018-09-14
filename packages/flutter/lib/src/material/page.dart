@@ -3,13 +3,12 @@
 // found in the LICENSE file.
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'theme.dart';
 
 // Fractional offset from 1/4 screen below the top to fully on screen.
-final Tween<Offset> _kBottomUpTween = new Tween<Offset>(
+final Tween<Offset> _kBottomUpTween = Tween<Offset>(
   begin: const Offset(0.0, 0.25),
   end: Offset.zero,
 );
@@ -21,11 +20,11 @@ class _MountainViewPageTransition extends StatelessWidget {
     @required bool fade,
     @required Animation<double> routeAnimation,
     @required this.child,
-  }) : _positionAnimation = _kBottomUpTween.animate(new CurvedAnimation(
+  }) : _positionAnimation = _kBottomUpTween.animate(CurvedAnimation(
          parent: routeAnimation, // The route's linear 0.0 - 1.0 animation.
          curve: Curves.fastOutSlowIn,
        )),
-       _opacityAnimation = fade ? new CurvedAnimation(
+       _opacityAnimation = fade ? CurvedAnimation(
          parent: routeAnimation,
          curve: Curves.easeIn, // Eyeballed from other Material apps.
        ) : const AlwaysStoppedAnimation<double>(1.0),
@@ -38,9 +37,9 @@ class _MountainViewPageTransition extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // TODO(ianh): tell the transform to be un-transformed for hit testing
-    return new SlideTransition(
+    return SlideTransition(
       position: _positionAnimation,
-      child: new FadeTransition(
+      child: FadeTransition(
         opacity: _opacityAnimation,
         child: child,
       ),
@@ -57,7 +56,7 @@ class _MountainViewPageTransition extends StatelessWidget {
 /// The transition is adaptive to the platform and on iOS, the page slides in
 /// from the right and exits in reverse. The page also shifts to the left in
 /// parallax when another page enters to cover it. (These directions are flipped
-/// in environements with a right-to-left reading direction.)
+/// in environments with a right-to-left reading direction.)
 ///
 /// By default, when a modal route is replaced by another, the previous route
 /// remains in memory. To free all the resources when this is not necessary, set
@@ -80,21 +79,13 @@ class MaterialPageRoute<T> extends PageRoute<T> {
   MaterialPageRoute({
     @required this.builder,
     RouteSettings settings,
-    this.maintainState: true,
-    bool fullscreenDialog: false,
+    this.maintainState = true,
+    bool fullscreenDialog = false,
   }) : assert(builder != null),
        super(settings: settings, fullscreenDialog: fullscreenDialog) {
     // ignore: prefer_asserts_in_initializer_lists , https://github.com/dart-lang/sdk/issues/31223
     assert(opaque);
   }
-
-  /// Turns on the fading of routes during page transitions.
-  ///
-  /// This is currently disabled by default because of performance issues on
-  /// low-end phones. Eventually these issues will be resolved and this flag
-  /// will be removed.
-  @Deprecated('This flag will eventually be removed once the performance issues are resolved. See: https://github.com/flutter/flutter/issues/13736')
-  static bool debugEnableFadingRoutes = false;
 
   /// Builds the primary contents of the route.
   final WidgetBuilder builder;
@@ -106,7 +97,7 @@ class MaterialPageRoute<T> extends PageRoute<T> {
   /// It's lazily created on first use.
   CupertinoPageRoute<T> get _cupertinoPageRoute {
     assert(_useCupertinoTransitions);
-    _internalCupertinoPageRoute ??= new CupertinoPageRoute<T>(
+    _internalCupertinoPageRoute ??= CupertinoPageRoute<T>(
       builder: builder, // Not used.
       fullscreenDialog: fullscreenDialog,
       hostRoute: this,
@@ -151,10 +142,14 @@ class MaterialPageRoute<T> extends PageRoute<T> {
 
   @override
   Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
-    final Widget result = builder(context);
+    final Widget result = Semantics(
+      scopesRoute: true,
+      explicitChildNodes: true,
+      child: builder(context),
+    );
     assert(() {
       if (result == null) {
-        throw new FlutterError(
+        throw FlutterError(
           'The builder for route "${settings.name}" returned null.\n'
           'Route builders must never return null.'
         );
@@ -169,10 +164,10 @@ class MaterialPageRoute<T> extends PageRoute<T> {
     if (_useCupertinoTransitions) {
       return _cupertinoPageRoute.buildTransitions(context, animation, secondaryAnimation, child);
     } else {
-      return new _MountainViewPageTransition(
+      return _MountainViewPageTransition(
         routeAnimation: animation,
         child: child,
-        fade: debugEnableFadingRoutes, // ignore: deprecated_member_use
+        fade: true,
       );
     }
   }

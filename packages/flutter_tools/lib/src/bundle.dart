@@ -24,23 +24,30 @@ String get defaultApplicationKernelPath => fs.path.join(getBuildDirectory(), 'ap
 const String defaultPrivateKeyPath = 'privatekey.der';
 
 const String _kKernelKey = 'kernel_blob.bin';
-const String _kSnapshotKey = 'snapshot_blob.bin';
+const String _kVMSnapshotData = 'vm_snapshot_data';
+const String _kVMSnapshotInstr = 'vm_snapshot_instr';
+const String _kIsolateSnapshotData = 'isolate_snapshot_data';
+const String _kIsolateSnapshotInstr = 'isolate_snapshot_instr';
 const String _kDylibKey = 'libapp.so';
-const String _kPlatformKernelKey = 'platform.dill';
+const String _kPlatformKernelKey = 'platform_strong.dill';
 
 Future<void> build({
-  String mainPath: defaultMainPath,
-  String manifestPath: defaultManifestPath,
+  TargetPlatform platform,
+  BuildMode buildMode,
+  String mainPath = defaultMainPath,
+  String manifestPath = defaultManifestPath,
   String snapshotPath,
   String applicationKernelFilePath,
   String depfilePath,
-  String privateKeyPath: defaultPrivateKeyPath,
+  String privateKeyPath = defaultPrivateKeyPath,
   String assetDirPath,
   String packagesPath,
-  bool previewDart2 : false,
-  bool precompiledSnapshot: false,
-  bool reportLicensedPackages: false,
-  bool trackWidgetCreation: false,
+  bool precompiledSnapshot = false,
+  bool reportLicensedPackages = false,
+  bool trackWidgetCreation = false,
+  String compilationTraceFilePath,
+  List<String> extraFrontEndOptions = const <String>[],
+  List<String> extraGenSnapshotOptions = const <String>[],
   List<String> fileSystemRoots,
   String fileSystemScheme,
 }) async {
@@ -49,92 +56,49 @@ Future<void> build({
   assetDirPath ??= getAssetBuildDirectory();
   packagesPath ??= fs.path.absolute(PackageMap.globalPackagesPath);
   applicationKernelFilePath ??= defaultApplicationKernelPath;
-  File snapshotFile;
-
-  if (!precompiledSnapshot && !previewDart2) {
-    ensureDirectoryExists(snapshotPath);
-
-    // In a precompiled snapshot, the instruction buffer contains script
-    // content equivalents
-    final Snapshotter snapshotter = new Snapshotter();
-    final int result = await snapshotter.buildScriptSnapshot(
-      mainPath: mainPath,
-      snapshotPath: snapshotPath,
-      depfilePath: depfilePath,
-      packagesPath: packagesPath,
-    );
-    if (result != 0)
-      throwToolExit('Failed to run the Flutter compiler. Exit code: $result', exitCode: result);
-
-    snapshotFile = fs.file(snapshotPath);
-  }
 
   DevFSContent kernelContent;
-  if (!precompiledSnapshot && previewDart2) {
-    final File fingerprintFile = fs.file('$depfilePath.fingerprint');
-    final List<String> inputPaths = <String>[
-      mainPath,
-    ];
-
-    bool needBuild = true;
-    final List<File> fingerprintFiles = <File>[fingerprintFile, fs.file(depfilePath)]
-      ..addAll(inputPaths.map(fs.file));
-
-    Future<Fingerprint> makeFingerprint() async {
-      final Set<String> compilerInputPaths = await readDepfile(depfilePath)
-        ..add(mainPath);
-      final Map<String, String> properties = <String, String>{
-        'entryPoint': mainPath,
-      };
-      return new Fingerprint.fromBuildInputs(properties, compilerInputPaths);
+  if (!precompiledSnapshot) {
+    if ((extraFrontEndOptions != null) && extraFrontEndOptions.isNotEmpty)
+      printTrace('Extra front-end options: $extraFrontEndOptions');
+    ensureDirectoryExists(applicationKernelFilePath);
+    final CompilerOutput compilerOutput = await kernelCompiler.compile(
+      sdkRoot: artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath),
+      incrementalCompilerByteStorePath: compilationTraceFilePath != null ? null :
+          fs.path.absolute(getIncrementalCompilerByteStoreDirectory()),
+      mainPath: fs.file(mainPath).absolute.path,
+      outputFilePath: applicationKernelFilePath,
+      depFilePath: depfilePath,
+      trackWidgetCreation: trackWidgetCreation,
+      extraFrontEndOptions: extraFrontEndOptions,
+      fileSystemRoots: fileSystemRoots,
+      fileSystemScheme: fileSystemScheme,
+      packagesPath: packagesPath,
+      linkPlatformKernelIn: compilationTraceFilePath != null,
+    );
+    if (compilerOutput?.outputFilename == null) {
+      throwToolExit('Compiler failed on $mainPath');
     }
-
-    if (fingerprintFiles.every((File file) => file.existsSync())) {
-      try {
-        final String json = await fingerprintFile.readAsString();
-        final Fingerprint oldFingerprint = new Fingerprint.fromJson(json);
-        if (oldFingerprint == await makeFingerprint()) {
-          needBuild = false;
-          printStatus('Skipping compilation. Fingerprint match.');
-        }
-      } catch (e) {
-        printTrace('Rebuilding kernel file due to fingerprint check error: $e');
-      }
-    }
-
-    String kernelBinaryFilename;
-    if (needBuild) {
-      ensureDirectoryExists(applicationKernelFilePath);
-      final CompilerOutput compilerOutput = await compile(
-        sdkRoot: artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath),
-        incrementalCompilerByteStorePath: fs.path.absolute(getIncrementalCompilerByteStoreDirectory()),
-        mainPath: fs.file(mainPath).absolute.path,
-        outputFilePath: applicationKernelFilePath,
-        depFilePath: depfilePath,
-        trackWidgetCreation: trackWidgetCreation,
-        fileSystemRoots: fileSystemRoots,
-        fileSystemScheme: fileSystemScheme,
-        packagesPath: packagesPath,
-      );
-      kernelBinaryFilename = compilerOutput?.outputFilename;
-      if (kernelBinaryFilename == null) {
-        throwToolExit('Compiler failed on $mainPath');
-      }
-      // Compute and record build fingerprint.
-      try {
-        final Fingerprint fingerprint = await makeFingerprint();
-        await fingerprintFile.writeAsString(fingerprint.toJson());
-      } catch (e, s) {
-        // Log exception and continue, this step is a performance improvement only.
-        printStatus('Error during compilation output fingerprinting: $e\n$s');
-      }
-    } else {
-      kernelBinaryFilename = applicationKernelFilePath;
-    }
-    kernelContent = new DevFSFileContent(fs.file(kernelBinaryFilename));
+    kernelContent = DevFSFileContent(fs.file(compilerOutput.outputFilename));
 
     await fs.directory(getBuildDirectory()).childFile('frontend_server.d')
         .writeAsString('frontend_server.d: ${artifacts.getArtifactPath(Artifact.frontendServerSnapshotForEngineDartSdk)}\n');
+
+    if (compilationTraceFilePath != null) {
+      final CoreJITSnapshotter snapshotter = CoreJITSnapshotter();
+      final int snapshotExitCode = await snapshotter.build(
+        platform: platform,
+        buildMode: buildMode,
+        mainPath: applicationKernelFilePath,
+        outputPath: getBuildDirectory(),
+        packagesPath: packagesPath,
+        compilationTraceFilePath: compilationTraceFilePath,
+        extraGenSnapshotOptions: extraGenSnapshotOptions,
+      );
+      if (snapshotExitCode != 0) {
+        throwToolExit('Snapshotting exited with non-zero exit code: $snapshotExitCode');
+      }
+    }
   }
 
   final AssetBundle assets = await buildAssets(
@@ -149,9 +113,9 @@ Future<void> build({
   await assemble(
     assetBundle: assets,
     kernelContent: kernelContent,
-    snapshotFile: snapshotFile,
     privateKeyPath: privateKeyPath,
     assetDirPath: assetDirPath,
+    compilationTraceFilePath: compilationTraceFilePath,
   );
 }
 
@@ -159,8 +123,8 @@ Future<AssetBundle> buildAssets({
   String manifestPath,
   String assetDirPath,
   String packagesPath,
-  bool includeDefaultFonts: true,
-  bool reportLicensedPackages: false
+  bool includeDefaultFonts = true,
+  bool reportLicensedPackages = false
 }) async {
   assetDirPath ??= getAssetBuildDirectory();
   packagesPath ??= fs.path.absolute(PackageMap.globalPackagesPath);
@@ -183,25 +147,37 @@ Future<AssetBundle> buildAssets({
 Future<void> assemble({
   AssetBundle assetBundle,
   DevFSContent kernelContent,
-  File snapshotFile,
   File dylibFile,
-  String privateKeyPath: defaultPrivateKeyPath,
+  String privateKeyPath = defaultPrivateKeyPath,
   String assetDirPath,
+  String compilationTraceFilePath,
 }) async {
   assetDirPath ??= getAssetBuildDirectory();
   printTrace('Building bundle');
 
-  final Map<String, DevFSContent> assetEntries = new Map<String, DevFSContent>.from(assetBundle.entries);
-
+  final Map<String, DevFSContent> assetEntries = Map<String, DevFSContent>.from(assetBundle.entries);
   if (kernelContent != null) {
-    final String platformKernelDill = artifacts.getArtifactPath(Artifact.platformKernelDill);
-    assetEntries[_kKernelKey] = kernelContent;
-    assetEntries[_kPlatformKernelKey] = new DevFSFileContent(fs.file(platformKernelDill));
+    if (compilationTraceFilePath != null) {
+      final String vmSnapshotData = fs.path.join(getBuildDirectory(), _kVMSnapshotData);
+      final String vmSnapshotInstr = fs.path.join(getBuildDirectory(), _kVMSnapshotInstr);
+      final String isolateSnapshotData = fs.path.join(getBuildDirectory(), _kIsolateSnapshotData);
+      final String isolateSnapshotInstr = fs.path.join(getBuildDirectory(), _kIsolateSnapshotInstr);
+      assetEntries[_kVMSnapshotData] = DevFSFileContent(fs.file(vmSnapshotData));
+      assetEntries[_kVMSnapshotInstr] = DevFSFileContent(fs.file(vmSnapshotInstr));
+      assetEntries[_kIsolateSnapshotData] = DevFSFileContent(fs.file(isolateSnapshotData));
+      assetEntries[_kIsolateSnapshotInstr] = DevFSFileContent(fs.file(isolateSnapshotInstr));
+    } else {
+      final String platformKernelDill = artifacts.getArtifactPath(Artifact.platformKernelDill);
+      final String vmSnapshotData = artifacts.getArtifactPath(Artifact.vmSnapshotData);
+      final String isolateSnapshotData = artifacts.getArtifactPath(Artifact.isolateSnapshotData);
+      assetEntries[_kKernelKey] = kernelContent;
+      assetEntries[_kPlatformKernelKey] = DevFSFileContent(fs.file(platformKernelDill));
+      assetEntries[_kVMSnapshotData] = DevFSFileContent(fs.file(vmSnapshotData));
+      assetEntries[_kIsolateSnapshotData] = DevFSFileContent(fs.file(isolateSnapshotData));
+    }
   }
-  if (snapshotFile != null)
-    assetEntries[_kSnapshotKey] = new DevFSFileContent(snapshotFile);
   if (dylibFile != null)
-    assetEntries[_kDylibKey] = new DevFSFileContent(dylibFile);
+    assetEntries[_kDylibKey] = DevFSFileContent(dylibFile);
 
   printTrace('Writing asset files to $assetDirPath');
   ensureDirectoryExists(assetDirPath);
@@ -223,5 +199,3 @@ Future<void> writeBundle(
     await file.writeAsBytes(await entry.value.contentsAsBytes());
   }));
 }
-
-

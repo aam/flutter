@@ -13,13 +13,14 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:test/test.dart';
+import '../flutter_test_alternative.dart';
 
 class TestServiceExtensionsBinding extends BindingBase
   with ServicesBinding,
        GestureBinding,
        SchedulerBinding,
        PaintingBinding,
+       SemanticsBinding,
        RendererBinding,
        WidgetsBinding {
 
@@ -74,7 +75,7 @@ class TestServiceExtensionsBinding extends BindingBase
   }
 
   Future<Null> flushMicrotasks() {
-    final Completer<Null> completer = new Completer<Null>();
+    final Completer<Null> completer = Completer<Null>();
     Timer.run(completer.complete);
     return completer.future;
   }
@@ -101,7 +102,7 @@ void main() {
   final List<String> console = <String>[];
 
   test('Service extensions - pretest', () async {
-    binding = new TestServiceExtensionsBinding();
+    binding = TestServiceExtensionsBinding();
     expect(binding.frameScheduled, isTrue);
     await binding.doFrame(); // initial frame scheduled by creating the binding
     expect(binding.frameScheduled, isFalse);
@@ -193,11 +194,11 @@ void main() {
     console.clear();
   });
 
-  test('Service extensions - debugDumpSemanticsTreeInGeometricOrder', () async {
+  test('Service extensions - debugDumpSemanticsTreeInTraversalOrder', () async {
     Map<String, dynamic> result;
 
     await binding.doFrame();
-    result = await binding.testExtension('debugDumpSemanticsTreeInGeometricOrder', <String, String>{});
+    result = await binding.testExtension('debugDumpSemanticsTreeInTraversalOrder', <String, String>{});
     expect(result, <String, String>{});
     expect(console, <String>['Semantics not collected.']);
     console.clear();
@@ -305,7 +306,7 @@ void main() {
     BinaryMessages.setMockMessageHandler('flutter/assets', (ByteData message) async {
       expect(utf8.decode(message.buffer.asUint8List()), 'test');
       completed = true;
-      return new ByteData(5); // 0x0000000000
+      return ByteData(5); // 0x0000000000
     });
     bool data;
     data = await rootBundle.loadStructuredData<bool>('test', (String value) async { expect(value, '\x00\x00\x00\x00\x00'); return true; });
@@ -506,9 +507,12 @@ void main() {
   });
 
   test('Service extensions - posttest', () async {
+    // See widget_inspector_test.dart for tests of the 15 ext.flutter.inspector
+    // service extensions included in this count.
+
     // If you add a service extension... TEST IT! :-)
     // ...then increment this number.
-    expect(binding.extensions.length, 17);
+    expect(binding.extensions.length, 37);
 
     expect(console, isEmpty);
     debugPrint = debugPrintThrottled;

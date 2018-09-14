@@ -10,15 +10,15 @@ import 'vscode.dart';
 
 class VsCodeValidator extends DoctorValidator {
   static const String extensionMarketplaceUrl =
-    'https://marketplace.visualstudio.com/items?itemName=Dart-Code.dart-code';
+    'https://marketplace.visualstudio.com/items?itemName=${VsCode.extensionIdentifier}';
   final VsCode _vsCode;
 
-  VsCodeValidator(this._vsCode) : super(_vsCode.productName);
+  VsCodeValidator(this._vsCode) : super(_vsCode.productName, ValidatorCategory.ide);
 
   static Iterable<DoctorValidator> get installedValidators {
     return VsCode
         .allInstalled()
-        .map((VsCode vsCode) => new VsCodeValidator(vsCode));
+        .map((VsCode vsCode) => VsCodeValidator(vsCode));
   }
 
   @override
@@ -28,19 +28,19 @@ class VsCodeValidator extends DoctorValidator {
     final String vsCodeVersionText = _vsCode.version == Version.unknown
         ? null
         : 'version ${_vsCode.version}';
-    messages.add(new ValidationMessage('VS Code at ${_vsCode.directory}'));
+    messages.add(ValidationMessage('VS Code at ${_vsCode.directory}'));
     if (_vsCode.isValid) {
       type = ValidationType.installed;
       messages.addAll(_vsCode.validationMessages
-          .map((String m) => new ValidationMessage(m)));
+          .map((String m) => ValidationMessage(m)));
     } else {
       type = ValidationType.partial;
       messages.addAll(_vsCode.validationMessages
-          .map((String m) => new ValidationMessage.error(m)));
-      messages.add(new ValidationMessage(
-          'Dart Code extension not installed; install from\n$extensionMarketplaceUrl'));
+          .map((String m) => ValidationMessage.error(m)));
+      messages.add(ValidationMessage(
+          'Flutter extension not installed; install from\n$extensionMarketplaceUrl'));
     }
 
-    return new ValidationResult(type, messages, statusInfo: vsCodeVersionText);
+    return ValidationResult(type, messages, statusInfo: vsCodeVersionText);
   }
 }

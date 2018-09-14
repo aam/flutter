@@ -46,7 +46,7 @@ abstract class BorderRadiusGeometry {
   /// negating the argument (using the prefix unary `-` operator or multiplying
   /// the argument by -1.0 using the `*` operator).
   BorderRadiusGeometry subtract(BorderRadiusGeometry other) {
-    return new _MixedBorderRadius(
+    return _MixedBorderRadius(
       _topLeft - other._topLeft,
       _topRight - other._topRight,
       _bottomLeft - other._bottomLeft,
@@ -70,7 +70,7 @@ abstract class BorderRadiusGeometry {
   /// representing a combination of both is returned. That object can be turned
   /// into a concrete [BorderRadius] using [resolve].
   BorderRadiusGeometry add(BorderRadiusGeometry other) {
-    return new _MixedBorderRadius(
+    return _MixedBorderRadius(
       _topLeft + other._topLeft,
       _topRight + other._topRight,
       _bottomLeft + other._bottomLeft,
@@ -173,7 +173,7 @@ abstract class BorderRadiusGeometry {
       }
     } else {
       // visuals aren't the same and at least one isn't zero
-      final StringBuffer result = new StringBuffer();
+      final StringBuffer result = StringBuffer();
       result.write('BorderRadius.only(');
       bool comma = false;
       if (_topLeft != Radius.zero) {
@@ -212,7 +212,7 @@ abstract class BorderRadiusGeometry {
       }
     } else {
       // logicals aren't the same and at least one isn't zero
-      final StringBuffer result = new StringBuffer();
+      final StringBuffer result = StringBuffer();
       result.write('BorderRadiusDirectional.only(');
       bool comma = false;
       if (_topStart != Radius.zero) {
@@ -300,14 +300,14 @@ class BorderRadius extends BorderRadiusGeometry {
 
   /// Creates a border radius where all radii are [Radius.circular(radius)].
   BorderRadius.circular(double radius) : this.all(
-    new Radius.circular(radius),
+    Radius.circular(radius),
   );
 
   /// Creates a vertically symmetric border radius where the top and bottom
   /// sides of the rectangle have the same radii.
   const BorderRadius.vertical({
-    Radius top: Radius.zero,
-    Radius bottom: Radius.zero,
+    Radius top = Radius.zero,
+    Radius bottom = Radius.zero,
   }) : this.only(
     topLeft: top,
     topRight: top,
@@ -318,8 +318,8 @@ class BorderRadius extends BorderRadiusGeometry {
   /// Creates a horizontally symmetrical border radius where the left and right
   /// sides of the rectangle have the same radii.
   const BorderRadius.horizontal({
-    Radius left: Radius.zero,
-    Radius right: Radius.zero,
+    Radius left = Radius.zero,
+    Radius right = Radius.zero,
   }) : this.only(
     topLeft: left,
     topRight: right,
@@ -330,14 +330,14 @@ class BorderRadius extends BorderRadiusGeometry {
   /// Creates a border radius with only the given non-zero values. The other
   /// corners will be right angles.
   const BorderRadius.only({
-    this.topLeft: Radius.zero,
-    this.topRight: Radius.zero,
-    this.bottomLeft: Radius.zero,
-    this.bottomRight: Radius.zero,
+    this.topLeft = Radius.zero,
+    this.topRight = Radius.zero,
+    this.bottomLeft = Radius.zero,
+    this.bottomRight = Radius.zero,
   });
 
   /// A border radius with all zero radii.
-  static const BorderRadius zero = const BorderRadius.all(Radius.zero);
+  static const BorderRadius zero = BorderRadius.all(Radius.zero);
 
   /// The top-left [Radius].
   final Radius topLeft;
@@ -377,7 +377,7 @@ class BorderRadius extends BorderRadiusGeometry {
 
   /// Creates an [RRect] from the current border radius and a [Rect].
   RRect toRRect(Rect rect) {
-    return new RRect.fromRectAndCorners(
+    return RRect.fromRectAndCorners(
       rect,
       topLeft: topLeft,
       topRight: topRight,
@@ -402,7 +402,7 @@ class BorderRadius extends BorderRadiusGeometry {
 
   /// Returns the difference between two [BorderRadius] objects.
   BorderRadius operator -(BorderRadius other) {
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: topLeft - other.topLeft,
       topRight: topRight - other.topRight,
       bottomLeft: bottomLeft - other.bottomLeft,
@@ -412,7 +412,7 @@ class BorderRadius extends BorderRadiusGeometry {
 
   /// Returns the sum of two [BorderRadius] objects.
   BorderRadius operator +(BorderRadius other) {
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: topLeft + other.topLeft,
       topRight: topRight + other.topRight,
       bottomLeft: bottomLeft + other.bottomLeft,
@@ -425,7 +425,7 @@ class BorderRadius extends BorderRadiusGeometry {
   /// This is the same as multiplying the object by -1.0.
   @override
   BorderRadius operator -() {
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: -topLeft,
       topRight: -topRight,
       bottomLeft: -bottomLeft,
@@ -436,7 +436,7 @@ class BorderRadius extends BorderRadiusGeometry {
   /// Scales each corner of the [BorderRadius] by the given factor.
   @override
   BorderRadius operator *(double other) {
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: topLeft * other,
       topRight: topRight * other,
       bottomLeft: bottomLeft * other,
@@ -447,7 +447,7 @@ class BorderRadius extends BorderRadiusGeometry {
   /// Divides each corner of the [BorderRadius] by the given factor.
   @override
   BorderRadius operator /(double other) {
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: topLeft / other,
       topRight: topRight / other,
       bottomLeft: bottomLeft / other,
@@ -458,7 +458,7 @@ class BorderRadius extends BorderRadiusGeometry {
   /// Integer divides each corner of the [BorderRadius] by the given factor.
   @override
   BorderRadius operator ~/(double other) {
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: topLeft ~/ other,
       topRight: topRight ~/ other,
       bottomLeft: bottomLeft ~/ other,
@@ -469,7 +469,7 @@ class BorderRadius extends BorderRadiusGeometry {
   /// Computes the remainder of each corner by the given factor.
   @override
   BorderRadius operator %(double other) {
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: topLeft % other,
       topRight: topRight % other,
       bottomLeft: bottomLeft % other,
@@ -500,7 +500,7 @@ class BorderRadius extends BorderRadiusGeometry {
       return b * t;
     if (b == null)
       return a * (1.0 - t);
-    return new BorderRadius.only(
+    return BorderRadius.only(
       topLeft: Radius.lerp(a.topLeft, b.topLeft, t),
       topRight: Radius.lerp(a.topRight, b.topRight, t),
       bottomLeft: Radius.lerp(a.bottomLeft, b.bottomLeft, t),
@@ -535,14 +535,14 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
 
   /// Creates a border radius where all radii are [Radius.circular(radius)].
   BorderRadiusDirectional.circular(double radius) : this.all(
-    new Radius.circular(radius),
+    Radius.circular(radius),
   );
 
   /// Creates a vertically symmetric border radius where the top and bottom
   /// sides of the rectangle have the same radii.
   const BorderRadiusDirectional.vertical({
-    Radius top: Radius.zero,
-    Radius bottom: Radius.zero,
+    Radius top = Radius.zero,
+    Radius bottom = Radius.zero,
   }) : this.only(
     topStart: top,
     topEnd: top,
@@ -553,8 +553,8 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
   /// Creates a horizontally symmetrical border radius where the start and end
   /// sides of the rectangle have the same radii.
   const BorderRadiusDirectional.horizontal({
-    Radius start: Radius.zero,
-    Radius end: Radius.zero,
+    Radius start = Radius.zero,
+    Radius end = Radius.zero,
   }) : this.only(
     topStart: start,
     topEnd: end,
@@ -565,17 +565,17 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
   /// Creates a border radius with only the given non-zero values. The other
   /// corners will be right angles.
   const BorderRadiusDirectional.only({
-    this.topStart: Radius.zero,
-    this.topEnd: Radius.zero,
-    this.bottomStart: Radius.zero,
-    this.bottomEnd: Radius.zero,
+    this.topStart = Radius.zero,
+    this.topEnd = Radius.zero,
+    this.bottomStart = Radius.zero,
+    this.bottomEnd = Radius.zero,
   });
 
   /// A border radius with all zero radii.
   ///
   /// Consider using [EdgeInsets.zero] instead, since that object has the same
   /// effect, but will be cheaper to [resolve].
-  static const BorderRadiusDirectional zero = const BorderRadiusDirectional.all(Radius.zero);
+  static const BorderRadiusDirectional zero = BorderRadiusDirectional.all(Radius.zero);
 
   /// The top-start [Radius].
   final Radius topStart;
@@ -629,7 +629,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
 
   /// Returns the difference between two [BorderRadiusDirectional] objects.
   BorderRadiusDirectional operator -(BorderRadiusDirectional other) {
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: topStart - other.topStart,
       topEnd: topEnd - other.topEnd,
       bottomStart: bottomStart - other.bottomStart,
@@ -639,7 +639,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
 
   /// Returns the sum of two [BorderRadiusDirectional] objects.
   BorderRadiusDirectional operator +(BorderRadiusDirectional other) {
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: topStart + other.topStart,
       topEnd: topEnd + other.topEnd,
       bottomStart: bottomStart + other.bottomStart,
@@ -652,7 +652,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
   /// This is the same as multiplying the object by -1.0.
   @override
   BorderRadiusDirectional operator -() {
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: -topStart,
       topEnd: -topEnd,
       bottomStart: -bottomStart,
@@ -663,7 +663,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
   /// Scales each corner of the [BorderRadiusDirectional] by the given factor.
   @override
   BorderRadiusDirectional operator *(double other) {
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: topStart * other,
       topEnd: topEnd * other,
       bottomStart: bottomStart * other,
@@ -674,7 +674,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
   /// Divides each corner of the [BorderRadiusDirectional] by the given factor.
   @override
   BorderRadiusDirectional operator /(double other) {
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: topStart / other,
       topEnd: topEnd / other,
       bottomStart: bottomStart / other,
@@ -685,7 +685,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
   /// Integer divides each corner of the [BorderRadiusDirectional] by the given factor.
   @override
   BorderRadiusDirectional operator ~/(double other) {
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: topStart ~/ other,
       topEnd: topEnd ~/ other,
       bottomStart: bottomStart ~/ other,
@@ -696,7 +696,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
   /// Computes the remainder of each corner by the given factor.
   @override
   BorderRadiusDirectional operator %(double other) {
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: topStart % other,
       topEnd: topEnd % other,
       bottomStart: bottomStart % other,
@@ -727,7 +727,7 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
       return b * t;
     if (b == null)
       return a * (1.0 - t);
-    return new BorderRadiusDirectional.only(
+    return BorderRadiusDirectional.only(
       topStart: Radius.lerp(a.topStart, b.topStart, t),
       topEnd: Radius.lerp(a.topEnd, b.topEnd, t),
       bottomStart: Radius.lerp(a.bottomStart, b.bottomStart, t),
@@ -740,14 +740,14 @@ class BorderRadiusDirectional extends BorderRadiusGeometry {
     assert(direction != null);
     switch (direction) {
       case TextDirection.rtl:
-        return new BorderRadius.only(
+        return BorderRadius.only(
           topLeft: topEnd,
           topRight: topStart,
           bottomLeft: bottomEnd,
           bottomRight: bottomStart,
         );
       case TextDirection.ltr:
-        return new BorderRadius.only(
+        return BorderRadius.only(
           topLeft: topStart,
           topRight: topEnd,
           bottomLeft: bottomStart,
@@ -796,7 +796,7 @@ class _MixedBorderRadius extends BorderRadiusGeometry {
 
   @override
   _MixedBorderRadius operator -() {
-    return new _MixedBorderRadius(
+    return _MixedBorderRadius(
       -_topLeft,
       -_topRight,
       -_bottomLeft,
@@ -811,7 +811,7 @@ class _MixedBorderRadius extends BorderRadiusGeometry {
   /// Scales each corner of the [_MixedBorderRadius] by the given factor.
   @override
   _MixedBorderRadius operator *(double other) {
-    return new _MixedBorderRadius(
+    return _MixedBorderRadius(
       _topLeft * other,
       _topRight * other,
       _bottomLeft * other,
@@ -825,7 +825,7 @@ class _MixedBorderRadius extends BorderRadiusGeometry {
 
   @override
   _MixedBorderRadius operator /(double other) {
-    return new _MixedBorderRadius(
+    return _MixedBorderRadius(
       _topLeft / other,
       _topRight / other,
       _bottomLeft / other,
@@ -839,7 +839,7 @@ class _MixedBorderRadius extends BorderRadiusGeometry {
 
   @override
   _MixedBorderRadius operator ~/(double other) {
-    return new _MixedBorderRadius(
+    return _MixedBorderRadius(
       _topLeft ~/ other,
       _topRight ~/ other,
       _bottomLeft ~/ other,
@@ -853,7 +853,7 @@ class _MixedBorderRadius extends BorderRadiusGeometry {
 
   @override
   _MixedBorderRadius operator %(double other) {
-    return new _MixedBorderRadius(
+    return _MixedBorderRadius(
       _topLeft % other,
       _topRight % other,
       _bottomLeft % other,
@@ -870,14 +870,14 @@ class _MixedBorderRadius extends BorderRadiusGeometry {
     assert(direction != null);
     switch (direction) {
       case TextDirection.rtl:
-        return new BorderRadius.only(
+        return BorderRadius.only(
           topLeft: _topLeft + _topEnd,
           topRight: _topRight + _topStart,
           bottomLeft: _bottomLeft + _bottomEnd,
           bottomRight: _bottomRight + _bottomStart,
         );
       case TextDirection.ltr:
-        return new BorderRadius.only(
+        return BorderRadius.only(
           topLeft: _topLeft + _topStart,
           topRight: _topRight + _topEnd,
           bottomLeft: _bottomLeft + _bottomStart,

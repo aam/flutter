@@ -11,7 +11,9 @@ import 'package:meta/meta.dart';
 
 import 'assertions.dart';
 import 'basic_types.dart';
+import 'debug.dart';
 import 'platform.dart';
+import 'print.dart';
 
 /// Signature for service extensions.
 ///
@@ -112,7 +114,7 @@ abstract class BindingBase {
     );
     registerSignalServiceExtension(
       name: 'frameworkPresent',
-      callback: () => new Future<Null>.value(),
+      callback: () => Future<Null>.value(),
     );
     assert(() {
       registerServiceExtension(
@@ -229,7 +231,7 @@ abstract class BindingBase {
   @protected
   Future<Null> performReassemble() {
     FlutterError.resetErrorCount();
-    return new Future<Null>.value();
+    return Future<Null>.value();
   }
 
   /// Registers a service extension method with the given name (full
@@ -363,6 +365,26 @@ abstract class BindingBase {
     final String methodName = 'ext.flutter.$name';
     developer.registerExtension(methodName, (String method, Map<String, String> parameters) async {
       assert(method == methodName);
+      assert(() {
+        if (debugInstrumentationEnabled)
+          debugPrint('service extension method received: $method($parameters)');
+        return true;
+      }());
+
+      // VM service extensions are handled as "out of band" messages by the VM,
+      // which means they are handled at various times, generally ASAP.
+      // Notably, this includes being handled in the middle of microtask loops.
+      // While this makes sense for some service extensions (e.g. "dump current
+      // stack trace", which explicitly doesn't want to wait for a loop to
+      // complete), Flutter extensions need not be handled with such high
+      // priority. Further, handling them with such high priority exposes us to
+      // the possibility that they're handled in the middle of a frame, which
+      // breaks many assertions. As such, we ensure they we run the callbacks
+      // on the outer event loop here.
+      await debugInstrumentAction<void>('Wait for outer event loop', () {
+        return Future<void>.delayed(Duration.zero);
+      });
+
       dynamic caughtException;
       StackTrace caughtStack;
       Map<String, dynamic> result;
@@ -375,14 +397,14 @@ abstract class BindingBase {
       if (caughtException == null) {
         result['type'] = '_extensionType';
         result['method'] = method;
-        return new developer.ServiceExtensionResponse.result(json.encode(result));
+        return developer.ServiceExtensionResponse.result(json.encode(result));
       } else {
-        FlutterError.reportError(new FlutterErrorDetails(
+        FlutterError.reportError(FlutterErrorDetails(
           exception: caughtException,
           stack: caughtStack,
           context: 'during a service extension callback for "$method"'
         ));
-        return new developer.ServiceExtensionResponse.error(
+        return developer.ServiceExtensionResponse.error(
           developer.ServiceExtensionResponse.extensionError,
           json.encode(<String, String>{
             'exception': caughtException.toString(),

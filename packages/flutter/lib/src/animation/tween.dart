@@ -26,13 +26,13 @@ abstract class Animatable<T> {
   /// Returns a new Animation that is driven by the given animation but that
   /// takes on values determined by this object.
   Animation<T> animate(Animation<double> parent) {
-    return new _AnimatedEvaluation<T>(parent, this);
+    return _AnimatedEvaluation<T>(parent, this);
   }
 
   /// Returns a new Animatable whose value is determined by first evaluating
   /// the given parent and then evaluating this object.
   Animatable<T> chain(Animatable<double> parent) {
-    return new _ChainedEvaluation<T>(parent, this);
+    return _ChainedEvaluation<T>(parent, this);
   }
 }
 
@@ -67,7 +67,7 @@ class _ChainedEvaluation<T> extends Animatable<T> {
   @override
   T evaluate(Animation<double> animation) {
     final double value = _parent.evaluate(animation);
-    return _evaluatable.evaluate(new AlwaysStoppedAnimation<double>(value));
+    return _evaluatable.evaluate(AlwaysStoppedAnimation<double>(value));
   }
 
   @override
@@ -97,7 +97,7 @@ class _ChainedEvaluation<T> extends Animatable<T> {
 /// `_animation`:
 ///
 /// ```dart
-/// Animation<Offset> _animation = new Tween<Offset>(
+/// Animation<Offset> _animation = Tween<Offset>(
 ///   begin: const Offset(100.0, 50.0),
 ///   end: const Offset(200.0, 300.0),
 /// ).animate(_controller);
@@ -301,6 +301,19 @@ class StepTween extends Tween<int> {
   // the begin and end types by a double, and int * double returns a double.
   @override
   int lerp(double t) => (begin + (end - begin) * t).floor();
+}
+
+/// A tween with a constant value.
+class ConstantTween<T> extends Tween<T> {
+  /// Create a tween whose [begin] and [end] values equal [value].
+  ConstantTween(T value) : super(begin: value, end: value);
+
+  /// This tween doesn't interpolate, it always returns [value].
+  @override
+  T lerp(double t) => begin;
+
+  @override
+  String toString() => '$runtimeType(value: begin)';
 }
 
 /// Transforms the value of the given animation by the given curve.
