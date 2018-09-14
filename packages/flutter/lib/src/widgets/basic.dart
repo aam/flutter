@@ -496,7 +496,7 @@ class ClipRect extends SingleChildRenderObjectWidget {
   ///
   /// If [clipper] is null, the clip will match the layout size and position of
   /// the child.
-  const ClipRect({ Key key, this.clipper, this.clipBehavior = Clip.antiAlias, Widget child }) : super(key: key, child: child);
+  const ClipRect({ Key key, this.clipper, this.clipBehavior = Clip.hardEdge, Widget child }) : super(key: key, child: child);
 
   /// If non-null, determines which clip to use.
   final CustomClipper<Rect> clipper;
@@ -5608,7 +5608,7 @@ class Builder extends StatelessWidget {
 /// Signature for the builder callback used by [StatefulBuilder].
 ///
 /// Call [setState] to schedule the [StatefulBuilder] to rebuild.
-typedef Widget StatefulWidgetBuilder(BuildContext context, StateSetter setState);
+typedef StatefulWidgetBuilder = Widget Function(BuildContext context, StateSetter setState);
 
 /// A platonic widget that both has state and calls a closure to obtain its child widget.
 ///
