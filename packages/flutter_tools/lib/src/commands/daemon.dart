@@ -19,6 +19,7 @@ import '../build_info.dart';
 import '../cache.dart';
 import '../device.dart';
 import '../emulator.dart';
+import '../fuchsia/fuchsia_device.dart';
 import '../globals.dart';
 import '../ios/devices.dart';
 import '../ios/simulators.dart';
@@ -429,12 +430,7 @@ class AppDomain extends Domain {
     final Completer<void> appStartedCompleter = Completer<void>();
     // We don't want to wait for this future to complete and callbacks won't fail.
     // As it just writes to stdout.
-    appStartedCompleter.future.timeout(const Duration(minutes: 3), onTimeout: () { // ignore: unawaited_futures
-      _sendAppEvent(app, 'log', <String, dynamic>{
-        'log': 'timeout waiting for the application to start',
-        'error': true,
-      });
-    }).then<void>((_) {
+    appStartedCompleter.future.then<void>((_) { // ignore: unawaited_futures
       _sendAppEvent(app, 'started');
     });
 
@@ -572,6 +568,7 @@ class DeviceDomain extends Domain {
     registerHandler('forward', forward);
     registerHandler('unforward', unforward);
 
+    addDeviceDiscoverer(FuchsiaDevices());
     addDeviceDiscoverer(AndroidDevices());
     addDeviceDiscoverer(IOSDevices());
     addDeviceDiscoverer(IOSSimulators());

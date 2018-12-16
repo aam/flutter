@@ -67,11 +67,13 @@ Widget overlay({ Widget child }) {
         child: Overlay(
           initialEntries: <OverlayEntry>[
             OverlayEntry(
-              builder: (BuildContext context) => Center(
-                child: Material(
-                  child: child,
-                ),
-              ),
+              builder: (BuildContext context) {
+                return Center(
+                  child: Material(
+                    child: child,
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -718,6 +720,43 @@ void main() {
     await tester.pumpWidget(builder(null));
     expect(findInputBox(), equals(inputBox));
     expect(inputBox.size, greaterThan(fourLineInputSize));
+  });
+
+
+  testWidgets('Multiline hint text will wrap up to maxLines', (WidgetTester tester) async {
+    final Key textFieldKey = UniqueKey();
+
+    Widget builder(int maxLines, final String hintMsg) {
+      return boilerplate(
+        child: TextField(
+          key: textFieldKey,
+          style: const TextStyle(color: Colors.black, fontSize: 34.0),
+          maxLines: maxLines,
+          decoration: InputDecoration(
+            hintText: hintMsg,
+          ),
+        ),
+      );
+    }
+
+    const String hintPlaceholder = 'Placeholder';
+    const String multipleLineText = 'Here\'s a text, which is more than one line, to demostrate the multiple line hint text';
+    await tester.pumpWidget(builder(null, hintPlaceholder));
+
+    RenderBox findHintText(String hint) => tester.renderObject(find.text(hint));
+
+    final RenderBox hintTextBox = findHintText(hintPlaceholder);
+    final Size oneLineHintSize = hintTextBox.size;
+
+    await tester.pumpWidget(builder(null, hintPlaceholder));
+    expect(findHintText(hintPlaceholder), equals(hintTextBox));
+    expect(hintTextBox.size, equals(oneLineHintSize));
+
+    const int maxLines = 3;
+    await tester.pumpWidget(builder(maxLines, multipleLineText));
+    final Text hintTextWidget = tester.widget(find.text(multipleLineText));
+    expect(hintTextWidget.maxLines, equals(maxLines));
+    expect(findHintText(multipleLineText).size, greaterThan(oneLineHintSize));
   });
 
   testWidgets('Can drag handles to change selection in multiline', (WidgetTester tester) async {
@@ -1790,16 +1829,14 @@ void main() {
   testWidgets('setting maxLength shows counter', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Material(
-        child: DefaultTextStyle(
-          style: TextStyle(fontFamily: 'Ahem', fontSize: 10.0),
-          child: Center(
+        child: Center(
             child: TextField(
               maxLength: 10,
             ),
           ),
         ),
       ),
-    ));
+    );
 
     expect(find.text('0/10'), findsOneWidget);
 
@@ -1809,22 +1846,41 @@ void main() {
     expect(find.text('5/10'), findsOneWidget);
   });
 
+  testWidgets(
+      'setting maxLength to TextField.noMaxLength shows only entered length',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Material(
+        child: Center(
+            child: TextField(
+              maxLength: TextField.noMaxLength,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('0'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '01234');
+    await tester.pump();
+
+    expect(find.text('5'), findsOneWidget);
+  });
+
   testWidgets('TextField identifies as text field in semantics', (WidgetTester tester) async {
     final SemanticsTester semantics = SemanticsTester(tester);
 
     await tester.pumpWidget(
       const MaterialApp(
         home: Material(
-          child: DefaultTextStyle(
-            style: TextStyle(fontFamily: 'Ahem', fontSize: 10.0),
-            child: Center(
+          child: Center(
               child: TextField(
                 maxLength: 10,
               ),
             ),
           ),
         ),
-      ),
     );
 
     expect(semantics, includesNodeWith(flags: <SemanticsFlag>[SemanticsFlag.isTextField]));
@@ -3162,9 +3218,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: DefaultTextStyle(
-            style: const TextStyle(fontSize: 12.0, fontFamily: 'Ahem'),
-            child: MediaQuery(
+          body: MediaQuery(
               data: MediaQueryData.fromWindow(ui.window).copyWith(textScaleFactor: 4.0),
               child: Center(
                 child: TextField(
@@ -3175,7 +3229,6 @@ void main() {
             ),
           ),
         ),
-      ),
     );
 
     await tester.tap(find.byType(TextField));
@@ -3326,5 +3379,125 @@ void main() {
 
     expect(minOffset, 0.0);
     expect(maxOffset, 50.0);
+  });
+
+  testWidgets('onTap is called upon tap', (WidgetTester tester) async {
+    int tapCount = 0;
+    await tester.pumpWidget(
+      overlay(
+        child: TextField(
+          onTap: () {
+            tapCount += 1;
+          },
+        ),
+      ),
+    );
+
+    expect(tapCount, 0);
+    await tester.tap(find.byType(TextField));
+    await tester.tap(find.byType(TextField));
+    await tester.tap(find.byType(TextField));
+    expect(tapCount, 3);
+  });
+
+  testWidgets('onTap is not called, field is disabled', (WidgetTester tester) async {
+    int tapCount = 0;
+    await tester.pumpWidget(
+      overlay(
+        child: TextField(
+          enabled: false,
+          onTap: () {
+            tapCount += 1;
+          },
+        ),
+      ),
+    );
+
+    expect(tapCount, 0);
+    await tester.tap(find.byType(TextField));
+    await tester.tap(find.byType(TextField));
+    await tester.tap(find.byType(TextField));
+    expect(tapCount, 0);
+  });
+
+  testWidgets('TextField style is merged with theme', (WidgetTester tester) async {
+    // Regression test for https://github.com/flutter/flutter/issues/23994
+
+    final ThemeData themeData = ThemeData(
+      textTheme: TextTheme(
+        subhead: TextStyle(
+          color: Colors.blue[500],
+        ),
+      ),
+    );
+
+    Widget buildFrame(TextStyle style) {
+      return MaterialApp(
+        theme: themeData,
+        home: Material(
+          child: Center(
+            child: TextField(
+              style: style,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Empty TextStyle is overridden by theme
+    await tester.pumpWidget(buildFrame(const TextStyle()));
+    EditableText editableText = tester.widget(find.byType(EditableText));
+    expect(editableText.style.color, themeData.textTheme.subhead.color);
+    expect(editableText.style.background, themeData.textTheme.subhead.background);
+    expect(editableText.style.shadows, themeData.textTheme.subhead.shadows);
+    expect(editableText.style.decoration, themeData.textTheme.subhead.decoration);
+    expect(editableText.style.locale, themeData.textTheme.subhead.locale);
+    expect(editableText.style.wordSpacing, themeData.textTheme.subhead.wordSpacing);
+
+    // Properties set on TextStyle override theme
+    const Color setColor = Colors.red;
+    await tester.pumpWidget(buildFrame(const TextStyle(color: setColor)));
+    editableText = tester.widget(find.byType(EditableText));
+    expect(editableText.style.color, setColor);
+
+    // inherit: false causes nothing to be merged in from theme
+    await tester.pumpWidget(buildFrame(const TextStyle(
+      fontSize: 24.0,
+      textBaseline: TextBaseline.alphabetic,
+      inherit: false,
+    )));
+    editableText = tester.widget(find.byType(EditableText));
+    expect(editableText.style.color, isNull);
+  });
+
+  testWidgets('style enforces required fields', (WidgetTester tester) async {
+    Widget buildFrame(TextStyle style) {
+      return MaterialApp(
+        home: Material(
+          child: TextField(
+            style: style,
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildFrame(const TextStyle(
+      inherit: false,
+      fontSize: 12.0,
+      textBaseline: TextBaseline.alphabetic,
+    )));
+    expect(tester.takeException(), isNull);
+
+    // With inherit not set to false, will pickup required fields from theme
+    await tester.pumpWidget(buildFrame(const TextStyle(
+      fontSize: 12.0,
+    )));
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(buildFrame(const TextStyle(
+      inherit: false,
+      fontSize: 12.0,
+    )));
+    expect(tester.takeException(), isNotNull);
   });
 }
