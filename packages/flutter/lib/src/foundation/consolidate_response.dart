@@ -5,6 +5,15 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+//import 'dart:nativewrappers';
+//import 'dart-ext:sample_extension';
+
+
+//class TransferrableWrapper extends NativeFieldWrapperClass1 {
+//  Uint8List create(int size) native "TransferrableWrapper_Create";
+//  void release() native "TransferrableWrapper_Release";
+//}
+
 
 /// Efficiently converts the response body of an [HttpClientResponse] into a [Uint8List].
 ///
@@ -20,7 +29,7 @@ Future<Uint8List> consolidateHttpClientResponseBytes(HttpClientResponse response
     chunks.add(chunk);
     contentLength += chunk.length;
   }, onDone: () {
-    final Uint8List bytes = Uint8List(contentLength);
+    final Uint8List bytes = Uint8List.transferrable(contentLength);
     int offset = 0;
     for (List<int> chunk in chunks) {
       bytes.setRange(offset, offset + chunk.length, chunk);
