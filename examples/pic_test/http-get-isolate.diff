@@ -1,0 +1,159 @@
+diff --git a/packages/flutter/lib/src/painting/image_provider.dart b/packages/flutter/lib/src/painting/image_provider.dart
+index 033575bed..3690576f7 100644
+--- a/packages/flutter/lib/src/painting/image_provider.dart
++++ b/packages/flutter/lib/src/painting/image_provider.dart
+@@ -3,7 +3,9 @@
+ // found in the LICENSE file.
+ 
+ import 'dart:async';
++import 'dart:developer';
+ import 'dart:io';
++import 'dart:isolate';
+ import 'dart:typed_data';
+ import 'dart:ui' as ui show Codec;
+ import 'dart:ui' show Size, Locale, TextDirection, hashValues;
+@@ -431,6 +433,56 @@ abstract class AssetBundleImageProvider extends ImageProvider<AssetBundleImageKe
+   }
+ }
+ 
++class DownloadRequest {
++  DownloadRequest(this.sendPort, this.uri, this.headers);
++
++  SendPort sendPort;
++  Uri uri;
++  Map<String, String> headers;
++}
++
++void handleHttpClientGet(SendPort sendPort) {
++  print("handleHttpClientGet setting up");
++  final HttpClient _httpClient = HttpClient();
++
++  RawReceivePort receivePort = RawReceivePort(
++      (DownloadRequest downloadRequest) {
++        print('handleHttpClientGet uri: ${downloadRequest.uri}');
++        Flow flow = Flow.begin();
++        Timeline.timeSync('handleHttpClientGet', () {
++          _httpClient.getUrl(downloadRequest.uri)
++              .then<Uint8List>((HttpClientRequest request) {
++                  Future<Uint8List> list = Timeline.timeSync('handleHttpClientGet.getUrl', () {
++                    downloadRequest.headers?.forEach((String name, String value) {
++                      request.headers.add(name, value);
++                    });
++                    return request.close().then<Uint8List>((HttpClientResponse response) {
++                      return Timeline.timeSync('handleHttpClientGet.request.close()', () {
++                        if (response.statusCode != HttpStatus.ok)
++                          throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, ${downloadRequest.uri}');
++                        return consolidateHttpClientResponseBytes(response);
++                      }, arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.step(flow.id));
++                    });
++                  }, arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.step(flow.id));
++                  return list;})
++              .then((Uint8List list) {
++                  Timeline.timeSync('handleHttpClientGet.consolidate', () {
++                      print('handleHttpClientGet from ${downloadRequest.uri} got ${list.lengthInBytes} bytes');
++                      downloadRequest.sendPort.send(list);
++                    },
++                    arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.end(flow.id));
++                  })
++              .catchError((dynamic error) {
++                  downloadRequest.sendPort.send(error.toString());
++              });
++            },
++            arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: flow
++        );
++    });
++
++  sendPort.send(receivePort.sendPort);
++}
++
+ /// Fetches the given URL from the network, associating it with the given scale.
+ ///
+ /// The image will be cached regardless of cache headers from the server.
+@@ -466,7 +518,7 @@ class NetworkImage extends ImageProvider<NetworkImage> {
+   @override
+   ImageStreamCompleter load(NetworkImage key) {
+     return MultiFrameImageStreamCompleter(
+-      codec: _loadAsync(key),
++      codec: _loadAsyncOnDesignatedIsolate(key),
+       scale: key.scale,
+       informationCollector: (StringBuffer information) {
+         information.writeln('Image provider: $this');
+@@ -496,6 +548,66 @@ class NetworkImage extends ImageProvider<NetworkImage> {
+     return await PaintingBinding.instance.instantiateImageCodec(bytes);
+   }
+ 
++  static Future<Isolate> _pendingLoader;
++  static List<Function> _pendingLoaderUsers;
++  static SendPort _requestPort;
++
++  Future<ui.Codec> _loadAsyncOnDesignatedIsolate(NetworkImage key) async {
++    assert(key == this);
++
++    final Uri resolved = Uri.base.resolve(key.url);
++
++    Completer<Uint8List> completer = Completer<Uint8List>();
++    RawReceivePort port = RawReceivePort((dynamic message) {
++        if (message is Uint8List) {
++          print("${DateTime.now()} Received image ${message.lengthInBytes} bytes");
++          completer.complete(message);
++        } else {
++          completer.completeError(message);
++        }
++      }
++    );
++
++    DownloadRequest downloadRequest = DownloadRequest(port.sendPort, resolved, headers);
++    if (_requestPort != null) {
++      print("${DateTime.now()} Sending request to existing $_requestPort to load $resolved");
++      _requestPort.send(downloadRequest);
++    } else {
++      if (_pendingLoader == null) {
++        print("${DateTime.now()} Spawning isolate to load $resolved");
++        _pendingLoaderUsers = <Function>[];
++        _pendingLoader =
++          Isolate.spawn<SendPort>(
++            handleHttpClientGet,
++            RawReceivePort((SendPort sendPort) {
++              _requestPort = sendPort;
++              for (Function function in _pendingLoaderUsers) {
++                function(sendPort);
++              }
++            }).sendPort
++          )..then<Isolate>((Isolate isolate) {
++              print("${DateTime.now()} Spawned isolate $isolate to load $resolved");
++            }).catchError((dynamic error, StackTrace stackTrace) {
++              completer.completeError(error, stackTrace);
++            });
++      }
++      _pendingLoaderUsers.add((SendPort sendPort) {
++        print("${DateTime.now()} Sending request to $sendPort to load $resolved");
++        sendPort.send(downloadRequest);
++      });
++    }
++
++    dynamic result = await completer.future;
++    print("${DateTime.now()} Completed future with ${result.lengthInBytes} bytes");
++    if (result is! Uint8List) {
++      throw Exception(result);
++    }
++    if (result.lengthInBytes == 0)
++      throw Exception('NetworkImage is an empty file: $resolved');
++
++    return await PaintingBinding.instance.instantiateImageCodec(result);
++  }
++
+   @override
+   bool operator ==(dynamic other) {
+     if (other.runtimeType != runtimeType)
+diff --git a/packages/flutter_tools/lib/src/resident_runner.dart b/packages/flutter_tools/lib/src/resident_runner.dart
+index 4fdee10e4..0e1734899 100644
+--- a/packages/flutter_tools/lib/src/resident_runner.dart
++++ b/packages/flutter_tools/lib/src/resident_runner.dart
+@@ -283,6 +283,7 @@ class FlutterDevice {
+     }
+ 
+     final Map<String, dynamic> platformArgs = <String, dynamic>{};
++    platformArgs['trace-startup'] = true;
+ 
+     startEchoingDeviceLog();
+ 

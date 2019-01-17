@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui show Codec;
 import 'dart:ui' show Size, Locale, TextDirection, hashValues;
@@ -437,6 +439,53 @@ abstract class AssetBundleImageProvider extends ImageProvider<AssetBundleImageKe
   }
 }
 
+class DownloadRequest {
+  DownloadRequest(this.sendPort, this.uri, this.headers);
+
+  SendPort sendPort;
+  Uri uri;
+  Map<String, String> headers;
+}
+
+void handleHttpClientGet(SendPort sendPort) {
+  final HttpClient _httpClient = HttpClient();
+
+  RawReceivePort receivePort = RawReceivePort(
+      (DownloadRequest downloadRequest) {
+        Flow flow = Flow.begin();
+        Timeline.timeSync('handleHttpClientGet', () {
+          _httpClient.getUrl(downloadRequest.uri)
+              .then<Uint8List>((HttpClientRequest request) {
+                  Future<Uint8List> list = Timeline.timeSync('handleHttpClientGet.getUrl', () {
+                    downloadRequest.headers?.forEach((String name, String value) {
+                      request.headers.add(name, value);
+                    });
+                    return request.close().then<Uint8List>((HttpClientResponse response) {
+                      return Timeline.timeSync('handleHttpClientGet.request.close()', () {
+                        if (response.statusCode != HttpStatus.ok)
+                          throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, ${downloadRequest.uri}');
+                        return consolidateHttpClientResponseBytes(response);
+                      }, arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.step(flow.id));
+                    });
+                  }, arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.step(flow.id));
+                  return list;})
+              .then((Uint8List list) {
+                  Timeline.timeSync('handleHttpClientGet.consolidate', () {
+                      downloadRequest.sendPort.send(list);
+                    },
+                    arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.end(flow.id));
+                  })
+              .catchError((dynamic error, dynamic stackTrace) {
+                  downloadRequest.sendPort.send(error.toString());
+              });
+            },
+            arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: flow
+        );
+    });
+
+  sendPort.send(receivePort.sendPort);
+}
+
 /// Fetches the given URL from the network, associating it with the given scale.
 ///
 /// The image will be cached regardless of cache headers from the server.
@@ -472,7 +521,7 @@ class NetworkImage extends ImageProvider<NetworkImage> {
   @override
   ImageStreamCompleter load(NetworkImage key) {
     return MultiFrameImageStreamCompleter(
-      codec: _loadAsync(key),
+      codec: _loadAsyncOnDesignatedIsolate(key),
       scale: key.scale,
       informationCollector: (StringBuffer information) {
         information.writeln('Image provider: $this');
@@ -486,6 +535,8 @@ class NetworkImage extends ImageProvider<NetworkImage> {
   Future<ui.Codec> _loadAsync(NetworkImage key) async {
     assert(key == this);
 
+    DateTime started = DateTime.now();
+
     final Uri resolved = Uri.base.resolve(key.url);
     final HttpClientRequest request = await _httpClient.getUrl(resolved);
     headers?.forEach((String name, String value) {
@@ -496,10 +547,72 @@ class NetworkImage extends ImageProvider<NetworkImage> {
       throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, $resolved');
 
     final Uint8List bytes = await consolidateHttpClientResponseBytes(response);
+    int elapsed = DateTime.now().millisecondsSinceEpoch - started.millisecondsSinceEpoch;
+    print("${DateTime.now()} Received image ${bytes.lengthInBytes} bytes in $elapsed ms: ${bytes.lengthInBytes/elapsed} bytes/ms");
     if (bytes.lengthInBytes == 0)
       throw Exception('NetworkImage is an empty file: $resolved');
 
     return PaintingBinding.instance.instantiateImageCodec(bytes);
+  }
+
+  static Future<Isolate> _pendingLoader;
+  static List<Function> _pendingLoaderUsers;
+  static SendPort _requestPort;
+
+  Future<ui.Codec> _loadAsyncOnDesignatedIsolate(NetworkImage key) async {
+    assert(key == this);
+
+    final Uri resolved = Uri.base.resolve(key.url);
+
+    Completer<Uint8List> completer = Completer<Uint8List>();
+    DateTime started = DateTime.now();
+    RawReceivePort port = RawReceivePort((dynamic message) {
+        if (message is Uint8List) {
+          completer.complete(message);
+        } else {
+          completer.completeError(message);
+        }
+      }
+    );
+
+    DownloadRequest downloadRequest = DownloadRequest(port.sendPort, resolved, headers);
+    if (_requestPort != null) {
+      _requestPort.send(downloadRequest);
+    } else {
+      if (_pendingLoader == null) {
+        _pendingLoaderUsers = <Function>[];
+        _pendingLoader =
+          Isolate.spawn<SendPort>(
+            handleHttpClientGet,
+            RawReceivePort((SendPort sendPort) {
+              _requestPort = sendPort;
+              for (Function function in _pendingLoaderUsers) {
+                function(sendPort);
+              }
+            }).sendPort
+          )..then<Isolate>((Isolate isolate) {
+            }).catchError((dynamic error, StackTrace stackTrace) {
+              completer.completeError(error, stackTrace);
+            });
+      }
+      _pendingLoaderUsers.add((SendPort sendPort) {
+        sendPort.send(downloadRequest);
+      });
+    }
+
+    dynamic bytes = await completer.future;
+    port.close();
+
+    if (bytes is! Uint8List) {
+      throw Exception(bytes);
+    }
+    int elapsed = DateTime.now().millisecondsSinceEpoch - started.millisecondsSinceEpoch;
+    print("${DateTime.now()} Received image ${bytes.lengthInBytes} bytes in $elapsed ms: ${bytes.lengthInBytes/elapsed} bytes/ms");
+
+    if (bytes.lengthInBytes == 0)
+      throw Exception('NetworkImage is an empty file: $resolved');
+
+    return await PaintingBinding.instance.instantiateImageCodec(bytes);
   }
 
   @override
