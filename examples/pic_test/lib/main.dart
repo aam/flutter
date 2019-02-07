@@ -13,15 +13,15 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
         title: 'Pictures',
-        theme: new ThemeData(),
-        home: MyHomePage());
+        theme: ThemeData(),
+        home: const MyHomePage());
   }
 }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key key}): super(key: key);
 
-  @override _MyHomePageState createState() => new _MyHomePageState();
+  @override _MyHomePageState createState() => _MyHomePageState();
 }
 
 const List<List<String>> allImages = <List<String>> [
@@ -91,13 +91,14 @@ const List<List<String>> allImages = <List<String>> [
 ;
 
 class _MyHomePageState extends State<MyHomePage> {
+  _MyHomePageState() {
+    refreshImages();
+  }
+
   List<String> imageSrcs;
   int state = 0;
   Random random = Random(DateTime.now().millisecondsSinceEpoch);
 
-  _MyHomePageState() {
-    refreshImages();
-  }
 
   void refreshImages() {
 //    int start = random.nextInt(allImages.length);
@@ -107,8 +108,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   String getId(int i) {
-    String uriString = imageSrcs[i];
-    int eqIndex = uriString.indexOf('=');
+    final String uriString = imageSrcs[i];
+    final int eqIndex = uriString.indexOf('=');
     if (eqIndex != -1) {
       return uriString.substring(eqIndex - 3, eqIndex);
     } else {
@@ -119,26 +120,26 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: new AppBar(
-        title: new Text('Pictures'),
+      appBar: AppBar(
+        title: const Text('Pictures'),
       ),
       body: Padding(
-        padding: EdgeInsets.only(left: 80.0, right: 80.0),
-        child: new ListView.builder(
+        padding: const EdgeInsets.only(left: 80.0, right: 80.0),
+        child: ListView.builder(
           itemCount: imageSrcs.length,
-          itemBuilder: (ctx, i) =>
+          itemBuilder: (BuildContext ctx, int i) =>
               Container(
                 decoration:
                 BoxDecoration(border: Border.all(color: Colors.black)),
                 child: Padding(
-                  padding: EdgeInsets.all(3.0),
+                  padding: const EdgeInsets.all(3.0),
                   child: Row(
                     children: <Widget>[
                       Text(getId(i)),
                       Flexible(
                         child: SizedBox(
                           child: Image(
-                            image: new NetworkImage(imageSrcs[i]),
+                            image: NetworkImage(imageSrcs[i]),
                           ),
                           width: 30.0,
                         ),
@@ -149,10 +150,10 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
         ),
       ),
-      floatingActionButton: new FloatingActionButton(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => setState(refreshImages),
         tooltip: 'Refresh',
-        child: new Icon(Icons.refresh),
+        child: const Icon(Icons.refresh),
       ),
     );
   }
