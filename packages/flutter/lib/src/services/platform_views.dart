@@ -25,6 +25,8 @@ final PlatformViewsRegistry platformViewsRegistry = PlatformViewsRegistry._insta
 class PlatformViewsRegistry {
   PlatformViewsRegistry._instance();
 
+  // Always non-negative. The id value -1 is used in the accessibility bridge
+  // to indicate the absence of a platform view.
   int _nextPlatformViewId = 0;
 
   /// Allocates a unique identifier for a platform view.
@@ -77,7 +79,6 @@ class PlatformViewsService {
     @required TextDirection layoutDirection,
     dynamic creationParams,
     MessageCodec<dynamic> creationParamsCodec,
-    PlatformViewCreatedCallback onPlatformViewCreated,
   }) {
     assert(id != null);
     assert(viewType != null);
@@ -89,7 +90,6 @@ class PlatformViewsService {
       creationParams,
       creationParamsCodec,
       layoutDirection,
-      onPlatformViewCreated,
     );
   }
 
@@ -117,7 +117,7 @@ class PlatformViewsService {
     assert(creationParams == null || creationParamsCodec != null);
 
     // TODO(amirh): pass layoutDirection once the system channel supports it.
-    final Map<String, dynamic> args = <String, dynamic> {
+    final Map<String, dynamic> args = <String, dynamic>{
       'id': id,
       'viewType': viewType,
     };
@@ -406,7 +406,6 @@ class AndroidViewController {
     dynamic creationParams,
     MessageCodec<dynamic> creationParamsCodec,
     TextDirection layoutDirection,
-    PlatformViewCreatedCallback onPlatformViewCreated,
   ) : assert(id != null),
       assert(viewType != null),
       assert(layoutDirection != null),
@@ -415,7 +414,6 @@ class AndroidViewController {
       _creationParams = creationParams,
       _creationParamsCodec = creationParamsCodec,
       _layoutDirection = layoutDirection,
-      _onPlatformViewCreated = onPlatformViewCreated,
       _state = _AndroidViewState.waitingForSize;
 
   /// Action code for when a primary pointer touched the screen.
@@ -459,8 +457,6 @@ class AndroidViewController {
 
   final String _viewType;
 
-  final PlatformViewCreatedCallback _onPlatformViewCreated;
-
   /// The texture entry id into which the Android view is rendered.
   int _textureId;
 
@@ -478,6 +474,25 @@ class AndroidViewController {
 
   MessageCodec<dynamic> _creationParamsCodec;
 
+  final List<PlatformViewCreatedCallback> _platformViewCreatedCallbacks = <PlatformViewCreatedCallback>[];
+
+  /// Whether the platform view has already been created.
+  bool get isCreated => _state == _AndroidViewState.created;
+
+  /// Adds a callback that will get invoke after the platform view has been
+  /// created.
+  void addOnPlatformViewCreatedListener(PlatformViewCreatedCallback listener) {
+    assert(listener != null);
+    assert(_state != _AndroidViewState.disposed);
+    _platformViewCreatedCallbacks.add(listener);
+  }
+
+  /// Removes a callback added with [addOnPlatformViewCreatedListener].
+  void removeOnPlatformViewCreatedListener(PlatformViewCreatedCallback listener) {
+    assert(_state != _AndroidViewState.disposed);
+    _platformViewCreatedCallbacks.remove(listener);
+  }
+
   /// Disposes the Android view.
   ///
   /// The [AndroidViewController] object is unusable after calling this.
@@ -486,6 +501,7 @@ class AndroidViewController {
   Future<void> dispose() async {
     if (_state == _AndroidViewState.creating || _state == _AndroidViewState.created)
       await SystemChannels.platform_views.invokeMethod<void>('dispose', id);
+    _platformViewCreatedCallbacks.clear();
     _state = _AndroidViewState.disposed;
   }
 
@@ -504,7 +520,7 @@ class AndroidViewController {
     if (_state == _AndroidViewState.waitingForSize)
       return _create(size);
 
-    await SystemChannels.platform_views.invokeMethod<void>('resize', <String, dynamic> {
+    await SystemChannels.platform_views.invokeMethod<void>('resize', <String, dynamic>{
       'id': id,
       'width': size.width,
       'height': size.height,
@@ -526,7 +542,7 @@ class AndroidViewController {
     if (_state == _AndroidViewState.waitingForSize)
       return;
 
-    await SystemChannels.platform_views.invokeMethod<void>('setDirection', <String, dynamic> {
+    await SystemChannels.platform_views.invokeMethod<void>('setDirection', <String, dynamic>{
       'id': id,
       'direction': _getAndroidDirection(layoutDirection),
     });
@@ -562,7 +578,7 @@ class AndroidViewController {
   }
 
   Future<void> _create(Size size) async {
-    final Map<String, dynamic> args = <String, dynamic> {
+    final Map<String, dynamic> args = <String, dynamic>{
       'id': id,
       'viewType': _viewType,
       'width': size.width,
@@ -578,9 +594,10 @@ class AndroidViewController {
       );
     }
     _textureId = await SystemChannels.platform_views.invokeMethod('create', args);
-    if (_onPlatformViewCreated != null)
-      _onPlatformViewCreated(id);
     _state = _AndroidViewState.created;
+    for (PlatformViewCreatedCallback callback in _platformViewCreatedCallbacks) {
+      callback(id);
+    }
   }
 }
 
@@ -625,7 +642,7 @@ class UiKitViewController {
   /// Calling this method releases the delayed events to the embedded UIView and makes it consume
   /// any following touch events for the pointers involved in the active gesture.
   Future<void> acceptGesture() {
-    final Map<String, dynamic> args = <String, dynamic> {
+    final Map<String, dynamic> args = <String, dynamic>{
       'id': id,
     };
     return SystemChannels.platform_views.invokeMethod('acceptGesture', args);
@@ -637,7 +654,7 @@ class UiKitViewController {
   /// Calling this method drops the buffered touch events and prevents any future touch events for
   /// the pointers that are part of the active touch sequence from arriving to the embedded view.
   Future<void> rejectGesture() {
-    final Map<String, dynamic> args = <String, dynamic> {
+    final Map<String, dynamic> args = <String, dynamic>{
       'id': id,
     };
     return SystemChannels.platform_views.invokeMethod('rejectGesture', args);

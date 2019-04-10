@@ -75,7 +75,7 @@ Future<void> run(List<String> args) async {
   try {
     Cache.flutterRoot = tempDir.path;
 
-    final String shellPath = argResults[_kOptionShell];
+    final String shellPath = fs.file(argResults[_kOptionShell]).resolveSymbolicLinksSync();
     if (!fs.isFileSync(shellPath)) {
       throwToolExit('Cannot find Flutter shell at $shellPath');
     }
@@ -99,8 +99,7 @@ Future<void> run(List<String> args) async {
         fs.link(artifacts.getArtifactPath(Artifact.flutterTester));
     testerDestLink.parent.createSync(recursive: true);
     testerDestLink.createSync(fs.path.absolute(shellPath));
-    final Link icudtlLink = testerDestLink.parent.childLink('icudtl.dat');
-    icudtlLink.createSync(fs.path.absolute(argResults[_kOptionIcudtl]));
+
     final Directory sdkRootDest =
         fs.directory(artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath));
     sdkRootDest.createSync(recursive: true);
@@ -128,7 +127,9 @@ Future<void> run(List<String> args) async {
     final List<Map<String, dynamic>> jsonList = List<Map<String, dynamic>>.from(
       json.decode(fs.file(argResults[_kOptionTests]).readAsStringSync()));
     for (Map<String, dynamic> map in jsonList) {
-      tests[map['source']] = map['dill'];
+      final String source = fs.file(map['source']).resolveSymbolicLinksSync();
+      final String dill = fs.file(map['dill']).resolveSymbolicLinksSync();
+      tests[source] = dill;
     }
 
     exitCode = await runTests(
@@ -139,6 +140,7 @@ Future<void> run(List<String> args) async {
       enableObservatory: collector != null,
       precompiledDillFiles: tests,
       concurrency: math.max(1, platform.numberOfProcessors - 2),
+      icudtlPath: fs.path.absolute(argResults[_kOptionIcudtl]),
     );
 
     if (collector != null) {

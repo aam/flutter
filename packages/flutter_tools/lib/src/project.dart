@@ -113,6 +113,7 @@ class FlutterProject {
 
   /// The directory containing the generated code for this project.
   Directory get generated => directory
+    .absolute
     .childDirectory('.dart_tool')
     .childDirectory('build')
     .childDirectory('generated')
@@ -161,9 +162,18 @@ class FlutterProject {
   }
 
   /// Return the set of builders used by this package.
-  Future<YamlMap> get builders async {
-    final YamlMap pubspec = loadYaml(await pubspecFile.readAsString());
+  YamlMap get builders {
+    if (!pubspecFile.existsSync()) {
+      return null;
+    }
+    final YamlMap pubspec = loadYaml(pubspecFile.readAsStringSync());
     return pubspec['builders'];
+  }
+
+  /// Whether there are any builders used by this package.
+  bool get hasBuilders {
+    final YamlMap result = builders;
+    return result != null && result.isNotEmpty;
   }
 }
 
@@ -467,7 +477,7 @@ class WebProject {
 
   final FlutterProject parent;
 
-   Future<void> ensureReadyForPlatformSpecificTooling() async {
+  Future<void> ensureReadyForPlatformSpecificTooling() async {
     /// Generate index.html in build/web. Eventually we could support
     /// a custom html under the web sub directory.
     final Directory outputDir = fs.directory(getWebBuildDirectory());
@@ -483,7 +493,7 @@ class WebProject {
       printStatusWhenWriting: false,
       overwriteExisting: true,
     );
-   }
+  }
 }
 
 /// Deletes [directory] with all content.

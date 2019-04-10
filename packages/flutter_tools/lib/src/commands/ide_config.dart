@@ -121,7 +121,7 @@ class IdeConfigCommand extends FlutterCommand {
       return;
     }
 
-    final Set<String> manifest = Set<String>();
+    final Set<String> manifest = <String>{};
     final List<FileSystemEntity> flutterFiles = _flutterRoot.listSync(recursive: true);
     for (FileSystemEntity entity in flutterFiles) {
       final String relativePath = fs.path.relative(entity.path, from: _flutterRoot.absolute.path);
@@ -223,7 +223,7 @@ class IdeConfigCommand extends FlutterCommand {
       throwToolExit('Currently, the only supported IDE is IntelliJ\n$usage', exitCode: 2);
     }
 
-    await Cache.instance.updateAll();
+    await Cache.instance.updateAll(<DevelopmentArtifact>{ DevelopmentArtifact.universal });
 
     if (argResults['update-templates']) {
       _handleTemplateUpdate();

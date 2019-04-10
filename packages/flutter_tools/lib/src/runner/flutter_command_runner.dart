@@ -411,7 +411,7 @@ class FlutterCommandRunner extends CommandRunner<void> {
       try {
         Uri engineUri = PackageMap(PackageMap.globalPackagesPath).map[kFlutterEnginePackageName];
         // Skip if sky_engine is the self-contained one.
-        if (fs.path.join(Cache.flutterRoot, 'bin', 'cache', 'pkg', kFlutterEnginePackageName, 'lib') + fs.path.separator == engineUri?.path) {
+        if (engineUri != null && fs.identicalSync(fs.path.join(Cache.flutterRoot, 'bin', 'cache', 'pkg', kFlutterEnginePackageName, 'lib'), engineUri.path)) {
           engineUri = null;
         }
         // If sky_engine is specified and the engineSourcePath not set, try to determine the engineSourcePath by sky_engine setting.
@@ -506,7 +506,10 @@ class FlutterCommandRunner extends CommandRunner<void> {
     final List<String> projectPaths = fs.directory(rootPath)
       .listSync(followLinks: false)
       .expand((FileSystemEntity entity) {
-        return entity is Directory ? _gatherProjectPaths(entity.path) : <String>[];
+        if (entity is Directory && !fs.path.split(entity.path).contains('.dart_tool')) {
+          return _gatherProjectPaths(entity.path);
+        }
+        return <String>[];
       })
       .toList();
 

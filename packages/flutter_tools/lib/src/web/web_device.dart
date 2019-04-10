@@ -61,7 +61,7 @@ class WebDevice extends Device {
   bool get supportsScreenshot => false;
 
   @override
-  void clearLogs() {}
+  void clearLogs() { }
 
   @override
   DeviceLogReader getLogReader({ApplicationPackage app}) {
@@ -100,7 +100,6 @@ class WebDevice extends Device {
     DebuggingOptions debuggingOptions,
     Map<String, Object> platformArgs,
     bool prebuiltApplication = false,
-    bool applicationNeedsRebuild = false,
     bool usesTerminalUi = true,
     bool ipv6 = false,
   }) async {

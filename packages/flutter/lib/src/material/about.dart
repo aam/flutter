@@ -380,18 +380,26 @@ class _LicensePageState extends State<LicensePage> {
   bool _loaded = false;
 
   Future<void> _initLicenses() async {
-    final Flow flow = Flow.begin();
-    Timeline.timeSync('_initLicenses()', () { }, flow: flow);
+    int debugFlowId = -1;
+    assert(() {
+      final Flow flow = Flow.begin();
+      Timeline.timeSync('_initLicenses()', () { }, flow: flow);
+      debugFlowId = flow.id;
+      return true;
+    }());
     await for (LicenseEntry license in LicenseRegistry.licenses) {
-      if (!mounted)
+      if (!mounted) {
         return;
-      Timeline.timeSync('_initLicenses()', () { }, flow: Flow.step(flow.id));
+      }
+      assert(() {
+        Timeline.timeSync('_initLicenses()', () { }, flow: Flow.step(debugFlowId));
+        return true;
+      }());
       final List<LicenseParagraph> paragraphs =
         await SchedulerBinding.instance.scheduleTask<List<LicenseParagraph>>(
-          () => license.paragraphs.toList(),
+          license.paragraphs.toList,
           Priority.animation,
           debugLabel: 'License',
-          flow: flow,
         );
       setState(() {
         _licenses.add(const Padding(
@@ -434,7 +442,10 @@ class _LicensePageState extends State<LicensePage> {
     setState(() {
       _loaded = true;
     });
-    Timeline.timeSync('Build scheduled', () { }, flow: Flow.end(flow.id));
+    assert(() {
+      Timeline.timeSync('Build scheduled', () { }, flow: Flow.end(debugFlowId));
+      return true;
+    }());
   }
 
   @override
@@ -488,6 +499,12 @@ class _LicensePageState extends State<LicensePage> {
 }
 
 String _defaultApplicationName(BuildContext context) {
+  // This doesn't handle the case of the application's title dynamically
+  // changing. In theory, we should make Title expose the current application
+  // title using an InheritedWidget, and so forth. However, in practice, if
+  // someone really wants their application title to change dynamically, they
+  // can provide an explicit applicationName to the widgets defined in this
+  // file, instead of relying on the default.
   final Title ancestorTitle = context.ancestorWidgetOfExactType(Title);
   return ancestorTitle?.title ?? Platform.resolvedExecutable.split(Platform.pathSeparator).last;
 }

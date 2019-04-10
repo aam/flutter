@@ -14,7 +14,7 @@ class LinuxDevice extends Device {
   LinuxDevice() : super('Linux');
 
   @override
-  void clearLogs() {}
+  void clearLogs() { }
 
   @override
   DeviceLogReader getLogReader({ ApplicationPackage app }) => NoOpDeviceLogReader('linux');
@@ -57,7 +57,6 @@ class LinuxDevice extends Device {
     DebuggingOptions debuggingOptions,
     Map<String, dynamic> platformArgs,
     bool prebuiltApplication = false,
-    bool applicationNeedsRebuild = false,
     bool usesTerminalUi = true,
     bool ipv6 = false,
   }) {

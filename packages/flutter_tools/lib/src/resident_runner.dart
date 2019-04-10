@@ -18,9 +18,7 @@ import 'base/utils.dart';
 import 'build_info.dart';
 import 'codegen.dart';
 import 'compile.dart';
-import 'dart/dependencies.dart';
 import 'dart/package_map.dart';
-import 'dependency_checker.dart';
 import 'devfs.dart';
 import 'device.dart';
 import 'globals.dart';
@@ -30,7 +28,8 @@ import 'run_hot.dart';
 import 'vmservice.dart';
 
 class FlutterDevice {
-  FlutterDevice(this.device, {
+  FlutterDevice(
+    this.device, {
     @required this.trackWidgetCreation,
     this.dillOutputPath,
     this.fileSystemRoots,
@@ -48,6 +47,48 @@ class FlutterDevice {
          targetModel: targetModel,
          experimentalFlags: experimentalFlags,
        );
+
+  /// Create a [FlutterDevice] with optional code generation enabled.
+  static Future<FlutterDevice> create(
+    Device device, {
+    @required bool trackWidgetCreation,
+    String dillOutputPath,
+    List<String> fileSystemRoots,
+    String fileSystemScheme,
+    String viewFilter,
+    @required String target,
+    TargetModel targetModel = TargetModel.flutter,
+    List<String> experimentalFlags,
+    ResidentCompiler generator,
+  }) async {
+    ResidentCompiler generator;
+    final FlutterProject flutterProject = await FlutterProject.current();
+    if (flutterProject.hasBuilders) {
+      generator = await CodeGeneratingResidentCompiler.create(
+        flutterProject: flutterProject,
+      );
+    } else {
+      generator = ResidentCompiler(
+        artifacts.getArtifactPath(Artifact.flutterPatchedSdkPath),
+        trackWidgetCreation: trackWidgetCreation,
+        fileSystemRoots: fileSystemRoots,
+        fileSystemScheme: fileSystemScheme,
+        targetModel: targetModel,
+        experimentalFlags: experimentalFlags,
+      );
+    }
+    return FlutterDevice(
+      device,
+      trackWidgetCreation: trackWidgetCreation,
+      dillOutputPath: dillOutputPath,
+      fileSystemRoots: fileSystemRoots,
+      fileSystemScheme:fileSystemScheme,
+      viewFilter: viewFilter,
+      experimentalFlags: experimentalFlags,
+      targetModel: targetModel,
+      generator: generator,
+    );
+  }
 
   final Device device;
   final ResidentCompiler generator;
@@ -306,7 +347,6 @@ class FlutterDevice {
     startEchoingDeviceLog();
 
     // Start the application.
-    final bool hasDirtyDependencies = hotRunner.hasDirtyDependencies(this);
     final Future<LaunchResult> futureResult = device.startApp(
       package,
       mainPath: hotRunner.mainPath,
@@ -314,7 +354,6 @@ class FlutterDevice {
       platformArgs: platformArgs,
       route: route,
       prebuiltApplication: prebuiltMode,
-      applicationNeedsRebuild: shouldBuild || hasDirtyDependencies,
       usesTerminalUi: hotRunner.usesTerminalUI,
       ipv6: hotRunner.ipv6,
     );
@@ -370,7 +409,6 @@ class FlutterDevice {
 
     startEchoingDeviceLog();
 
-    final bool hasDirtyDependencies = coldRunner.hasDirtyDependencies(this);
     final LaunchResult result = await device.startApp(
       package,
       mainPath: coldRunner.mainPath,
@@ -378,7 +416,6 @@ class FlutterDevice {
       platformArgs: platformArgs,
       route: route,
       prebuiltApplication: prebuiltMode,
-      applicationNeedsRebuild: shouldBuild || hasDirtyDependencies,
       usesTerminalUi: coldRunner.usesTerminalUI,
       ipv6: coldRunner.ipv6,
     );
@@ -403,14 +440,14 @@ class FlutterDevice {
     DateTime firstBuildTime,
     bool bundleFirstUpload = false,
     bool bundleDirty = false,
-    Set<String> fileFilter,
     bool fullRestart = false,
     String projectRootPath,
     String pathToReload,
+    @required List<Uri> invalidatedFiles,
   }) async {
     final Status devFSStatus = logger.startProgress(
       'Syncing files to device ${device.name}...',
-      timeout: kFastOperation,
+      timeout: timeoutConfiguration.fastOperation,
     );
     UpdateFSReport report;
     try {
@@ -420,14 +457,13 @@ class FlutterDevice {
         bundle: bundle,
         firstBuildTime: firstBuildTime,
         bundleFirstUpload: bundleFirstUpload,
-        bundleDirty: bundleDirty,
-        fileFilter: fileFilter,
         generator: generator,
         fullRestart: fullRestart,
         dillOutputPath: dillOutputPath,
         trackWidgetCreation: trackWidgetCreation,
         projectRootPath: projectRootPath,
         pathToReload: pathToReload,
+        invalidatedFiles: invalidatedFiles,
       );
     } on DevFSException {
       devFSStatus.cancel();
@@ -448,7 +484,8 @@ class FlutterDevice {
 
 // Shared code between different resident application runners.
 abstract class ResidentRunner {
-  ResidentRunner(this.flutterDevices, {
+  ResidentRunner(
+    this.flutterDevices, {
     this.target,
     this.debuggingOptions,
     this.usesTerminalUI = true,
@@ -596,7 +633,7 @@ abstract class ResidentRunner {
   }
 
   Future<void> _screenshot(FlutterDevice device) async {
-    final Status status = logger.startProgress('Taking screenshot for ${device.device.name}...', timeout: kFastOperation);
+    final Status status = logger.startProgress('Taking screenshot for ${device.device.name}...', timeout: timeoutConfiguration.fastOperation);
     final File outputFile = getUniqueFile(fs.currentDirectory, 'flutter', 'png');
     try {
       if (supportsServiceProtocol && isRunningDebug) {
@@ -901,24 +938,6 @@ abstract class ResidentRunner {
     assert(exitCode != null);
     await cleanupAtFinish();
     return exitCode;
-  }
-
-  bool hasDirtyDependencies(FlutterDevice device) {
-    /// When using the build system, dependency analysis is handled by build
-    /// runner instead.
-    if (experimentalBuildEnabled) {
-      return false;
-    }
-    final DartDependencySetBuilder dartDependencySetBuilder =
-        DartDependencySetBuilder(mainPath, packagesFilePath);
-    final DependencyChecker dependencyChecker =
-        DependencyChecker(dartDependencySetBuilder, assetBundle);
-    if (device.package.packagesFile == null || !device.package.packagesFile.existsSync()) {
-      return true;
-    }
-    final DateTime lastBuildTime = device.package.packagesFile.statSync().modified;
-
-    return dependencyChecker.check(lastBuildTime);
   }
 
   Future<void> preStop() async { }

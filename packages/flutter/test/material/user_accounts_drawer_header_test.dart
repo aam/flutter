@@ -32,7 +32,7 @@ Future<void> pumpTestWidget(
         child: Material(
           child: Center(
             child: UserAccountsDrawerHeader(
-              onDetailsPressed: withOnDetailsPressedHandler ? () {} : null,
+              onDetailsPressed: withOnDetailsPressedHandler ? () { } : null,
               currentAccountPicture: const ExcludeSemantics(
                 child: CircleAvatar(
                   key: avatarA,
@@ -135,6 +135,42 @@ void main() {
     transformWidget = tester.firstWidget(find.byType(Transform));
 
     // Icon has rotated 180 degrees back to the original position.
+    expect(transformWidget.transform.getRotation()[0], 1.0);
+    expect(transformWidget.transform.getRotation()[4], 1.0);
+  });
+
+  // Regression test for https://github.com/flutter/flutter/issues/25801.
+  testWidgets('UserAccountsDrawerHeader icon does not rotate after setState', (WidgetTester tester) async {
+    StateSetter testSetState;
+    await tester.pumpWidget(MaterialApp(
+      home: Material(
+        child: StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            testSetState = setState;
+            return UserAccountsDrawerHeader(
+              onDetailsPressed: () { },
+              accountName: const Text('name'),
+              accountEmail: const Text('email'),
+            );
+          },
+        ),
+      ),
+    ));
+
+    Transform transformWidget = tester.firstWidget(find.byType(Transform));
+
+    // Icon is right side up.
+    expect(transformWidget.transform.getRotation()[0], 1.0);
+    expect(transformWidget.transform.getRotation()[4], 1.0);
+
+    testSetState(() { });
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(tester.hasRunningAnimations, isFalse);
+
+    await tester.pumpAndSettle();
+    transformWidget = tester.firstWidget(find.byType(Transform));
+
+    // Icon has not rotated.
     expect(transformWidget.transform.getRotation()[0], 1.0);
     expect(transformWidget.transform.getRotation()[4], 1.0);
   });

@@ -114,6 +114,12 @@ abstract class TransitionRoute<T> extends OverlayRoute<T> {
   AnimationController get controller => _controller;
   AnimationController _controller;
 
+  /// The animation for the route being pushed on top of this route. This
+  /// animation lets this route coordinate with the entrance and exit transition
+  /// of route pushed on top of this route.
+  Animation<double> get secondaryAnimation => _secondaryAnimation;
+  final ProxyAnimation _secondaryAnimation = ProxyAnimation(kAlwaysDismissedAnimation);
+
   /// Called to create the animation controller that will drive the transitions to
   /// this route from the previous one, and back to the previous route from this
   /// one.
@@ -151,11 +157,11 @@ abstract class TransitionRoute<T> extends OverlayRoute<T> {
           overlayEntries.first.opaque = false;
         break;
       case AnimationStatus.dismissed:
-        // We might still be the current route if a subclass is controlling the
+        // We might still be an active route if a subclass is controlling the
         // the transition and hits the dismissed status. For example, the iOS
         // back gesture drives this animation to the dismissed status before
-        // popping the navigator.
-        if (!isCurrent) {
+        // removing the route and disposing it.
+        if (!isActive) {
           navigator.finalizeRoute(this);
           assert(overlayEntries.isEmpty);
         }
@@ -163,12 +169,6 @@ abstract class TransitionRoute<T> extends OverlayRoute<T> {
     }
     changedInternalState();
   }
-
-  /// The animation for the route being pushed on top of this route. This
-  /// animation lets this route coordinate with the entrance and exit transition
-  /// of routes pushed on top of this route.
-  Animation<double> get secondaryAnimation => _secondaryAnimation;
-  final ProxyAnimation _secondaryAnimation = ProxyAnimation(kAlwaysDismissedAnimation);
 
   @override
   void install(OverlayEntry insertionPoint) {
@@ -1363,7 +1363,7 @@ class RouteObserver<R extends Route<dynamic>> extends NavigatorObserver {
   void subscribe(RouteAware routeAware, R route) {
     assert(routeAware != null);
     assert(route != null);
-    final Set<RouteAware> subscribers = _listeners.putIfAbsent(route, () => Set<RouteAware>());
+    final Set<RouteAware> subscribers = _listeners.putIfAbsent(route, () => <RouteAware>{});
     if (subscribers.add(routeAware)) {
       routeAware.didPush();
     }

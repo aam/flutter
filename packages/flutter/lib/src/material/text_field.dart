@@ -147,6 +147,8 @@ class TextField extends StatefulWidget {
     this.obscureText = false,
     this.autocorrect = true,
     this.maxLines = 1,
+    this.minLines,
+    this.expands = false,
     this.maxLength,
     this.maxLengthEnforced = true,
     this.onChanged,
@@ -171,6 +173,16 @@ class TextField extends StatefulWidget {
        assert(scrollPadding != null),
        assert(dragStartBehavior != null),
        assert(maxLines == null || maxLines > 0),
+       assert(minLines == null || minLines > 0),
+       assert(
+         (maxLines == null) || (minLines == null) || (maxLines >= minLines),
+         'minLines can\'t be greater than maxLines',
+       ),
+       assert(expands != null),
+       assert(
+         !expands || (maxLines == null && minLines == null),
+         'minLines and maxLines must be null when expands is true.',
+       ),
        assert(maxLength == null || maxLength == TextField.noMaxLength || maxLength > 0),
        keyboardType = keyboardType ?? (maxLines == 1 ? TextInputType.text : TextInputType.multiline),
        super(key: key);
@@ -268,6 +280,12 @@ class TextField extends StatefulWidget {
 
   /// {@macro flutter.widgets.editableText.maxLines}
   final int maxLines;
+
+  /// {@macro flutter.widgets.editableText.minLines}
+  final int minLines;
+
+  /// {@macro flutter.widgets.editableText.expands}
+  final bool expands;
 
   /// If [maxLength] is set to this value, only the "current input length"
   /// part of the character counter is shown.
@@ -457,6 +475,8 @@ class TextField extends StatefulWidget {
     properties.add(DiagnosticsProperty<bool>('obscureText', obscureText, defaultValue: false));
     properties.add(DiagnosticsProperty<bool>('autocorrect', autocorrect, defaultValue: true));
     properties.add(IntProperty('maxLines', maxLines, defaultValue: 1));
+    properties.add(IntProperty('minLines', minLines, defaultValue: null));
+    properties.add(DiagnosticsProperty<bool>('expands', expands, defaultValue: false));
     properties.add(IntProperty('maxLength', maxLength, defaultValue: null));
     properties.add(FlagProperty('maxLengthEnforced', value: maxLengthEnforced, defaultValue: true, ifFalse: 'maxLength not enforced'));
     properties.add(EnumProperty<TextInputAction>('textInputAction', textInputAction, defaultValue: null));
@@ -599,12 +619,12 @@ class _TextFieldState extends State<TextField> with AutomaticKeepAliveClientMixi
     }
   }
 
-  InteractiveInkFeature _createInkFeature(TapDownDetails details) {
+  InteractiveInkFeature _createInkFeature(Offset globalPosition) {
     final MaterialInkController inkController = Material.of(context);
     final ThemeData themeData = Theme.of(context);
     final BuildContext editableContext = _editableTextKey.currentContext;
     final RenderBox referenceBox = InputDecorator.containerOf(editableContext) ?? editableContext.findRenderObject();
-    final Offset position = referenceBox.globalToLocal(details.globalPosition);
+    final Offset position = referenceBox.globalToLocal(globalPosition);
     final Color color = themeData.splashColor;
 
     InteractiveInkFeature splash;
@@ -637,7 +657,7 @@ class _TextFieldState extends State<TextField> with AutomaticKeepAliveClientMixi
 
   void _handleTapDown(TapDownDetails details) {
     _renderEditable.handleTapDown(details);
-    _startSplash(details);
+    _startSplash(details.globalPosition);
   }
 
   void _handleForcePressStarted(ForcePressDetails details) {
@@ -723,10 +743,29 @@ class _TextFieldState extends State<TextField> with AutomaticKeepAliveClientMixi
     }
   }
 
-  void _startSplash(TapDownDetails details) {
+  void _handleMouseDragSelectionStart(DragStartDetails details) {
+    _renderEditable.selectPositionAt(
+      from: details.globalPosition,
+      cause: SelectionChangedCause.drag,
+    );
+    _startSplash(details.globalPosition);
+  }
+
+  void _handleMouseDragSelectionUpdate(
+      DragStartDetails startDetails,
+      DragUpdateDetails updateDetails,
+  ) {
+    _renderEditable.selectPositionAt(
+      from: startDetails.globalPosition,
+      to: updateDetails.globalPosition,
+      cause: SelectionChangedCause.drag,
+    );
+  }
+
+  void _startSplash(Offset globalPosition) {
     if (_effectiveFocusNode.hasFocus)
       return;
-    final InteractiveInkFeature splash = _createInkFeature(details);
+    final InteractiveInkFeature splash = _createInkFeature(globalPosition);
     _splashes ??= HashSet<InteractiveInkFeature>();
     _splashes.add(splash);
     _currentSplash = splash;
@@ -832,6 +871,8 @@ class _TextFieldState extends State<TextField> with AutomaticKeepAliveClientMixi
         obscureText: widget.obscureText,
         autocorrect: widget.autocorrect,
         maxLines: widget.maxLines,
+        minLines: widget.minLines,
+        expands: widget.expands,
         selectionColor: themeData.textSelectionColor,
         selectionControls: widget.selectionEnabled ? textSelectionControls : null,
         onChanged: widget.onChanged,
@@ -864,6 +905,7 @@ class _TextFieldState extends State<TextField> with AutomaticKeepAliveClientMixi
             textAlign: widget.textAlign,
             isFocused: focusNode.hasFocus,
             isEmpty: controller.value.text.isEmpty,
+            expands: widget.expands,
             child: child,
           );
         },
@@ -888,6 +930,8 @@ class _TextFieldState extends State<TextField> with AutomaticKeepAliveClientMixi
           onSingleLongTapMoveUpdate: _handleSingleLongTapMoveUpdate,
           onSingleLongTapEnd: _handleSingleLongTapEnd,
           onDoubleTapDown: _handleDoubleTapDown,
+          onDragSelectionStart: _handleMouseDragSelectionStart,
+          onDragSelectionUpdate: _handleMouseDragSelectionUpdate,
           behavior: HitTestBehavior.translucent,
           child: child,
         ),

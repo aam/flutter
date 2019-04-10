@@ -61,7 +61,7 @@ class TestSemantics {
        assert(decreasedValue != null),
        assert(hint != null),
        assert(children != null),
-       tags = tags?.toSet() ?? Set<SemanticsTag>();
+       tags = tags?.toSet() ?? <SemanticsTag>{};
 
   /// Creates an object with some test semantics data, with the [id] and [rect]
   /// set to the appropriate values for the root node.
@@ -92,7 +92,7 @@ class TestSemantics {
        elevation = 0.0,
        thickness = 0.0,
        assert(children != null),
-       tags = tags?.toSet() ?? Set<SemanticsTag>();
+       tags = tags?.toSet() ?? <SemanticsTag>{};
 
   /// Creates an object with some test semantics data, with the [id] and [rect]
   /// set to the appropriate values for direct children of the root node.
@@ -131,7 +131,7 @@ class TestSemantics {
        assert(hint != null),
        transform = _applyRootChildScale(transform),
        assert(children != null),
-       tags = tags?.toSet() ?? Set<SemanticsTag>();
+       tags = tags?.toSet() ?? <SemanticsTag>{};
 
   /// The unique identifier for this node.
   ///
@@ -621,17 +621,16 @@ class SemanticsTester {
 
 class _HasSemantics extends Matcher {
   const _HasSemantics(
-    this._semantics,
-    {
-      @required this.ignoreRect,
-      @required this.ignoreTransform,
-      @required this.ignoreId,
-      @required this.childOrder,
-    }) : assert(_semantics != null),
-         assert(ignoreRect != null),
-         assert(ignoreId != null),
-         assert(ignoreTransform != null),
-         assert(childOrder != null);
+    this._semantics, {
+    @required this.ignoreRect,
+    @required this.ignoreTransform,
+    @required this.ignoreId,
+    @required this.childOrder,
+  }) : assert(_semantics != null),
+       assert(ignoreRect != null),
+       assert(ignoreId != null),
+       assert(ignoreTransform != null),
+       assert(childOrder != null);
 
   final TestSemantics _semantics;
   final bool ignoreRect;

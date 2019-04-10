@@ -70,7 +70,7 @@ class _TrackedAnnotation {
   ///
   /// This is used to detect layers that used to have the mouse pointer inside
   /// them, but now no longer do (to facilitate exit notification).
-  Set<int> activeDevices = Set<int>();
+  Set<int> activeDevices = <int>{};
 }
 
 /// Describes a function that finds an annotation given an offset in logical
@@ -122,9 +122,9 @@ class MouseTracker {
     final _TrackedAnnotation trackedAnnotation = _findAnnotation(annotation);
     assert(trackedAnnotation != null, "Tried to detach an annotation that wasn't attached: $annotation");
     for (int deviceId in trackedAnnotation.activeDevices) {
-      annotation.onExit(PointerExitEvent.fromHoverEvent(_lastMouseEvent[deviceId]));
+      annotation.onExit(PointerExitEvent.fromMouseEvent(_lastMouseEvent[deviceId]));
     }
-    _trackedAnnotations.remove(trackedAnnotation);
+    _trackedAnnotations.remove(annotation);
   }
 
   void _scheduleMousePositionCheck() {
@@ -171,6 +171,16 @@ class MouseTracker {
     return trackedAnnotation;
   }
 
+  /// Checks if the given [MouseTrackerAnnotation] is attached to this
+  /// [MouseTracker].
+  ///
+  /// This function is only public to allow for proper testing of the
+  /// MouseTracker. Do not call in other contexts.
+  @visibleForTesting
+  bool isAnnotationAttached(MouseTrackerAnnotation annotation) {
+    return _trackedAnnotations[annotation] != null;
+  }
+
   /// Tells interested objects that a mouse has entered, exited, or moved, given
   /// a callback to fetch the [MouseTrackerAnnotation] associated with a global
   /// offset.
@@ -184,7 +194,7 @@ class MouseTracker {
   void collectMousePositions() {
     void exitAnnotation(_TrackedAnnotation trackedAnnotation, int deviceId) {
       if (trackedAnnotation.annotation?.onExit != null && trackedAnnotation.activeDevices.contains(deviceId)) {
-        trackedAnnotation.annotation.onExit(PointerExitEvent.fromHoverEvent(_lastMouseEvent[deviceId]));
+        trackedAnnotation.annotation.onExit(PointerExitEvent.fromMouseEvent(_lastMouseEvent[deviceId]));
         trackedAnnotation.activeDevices.remove(deviceId);
       }
     }
@@ -226,10 +236,10 @@ class MouseTracker {
         // event sent to it.
         hitAnnotation.activeDevices.add(deviceId);
         if (hitAnnotation.annotation?.onEnter != null) {
-          hitAnnotation.annotation.onEnter(PointerEnterEvent.fromHoverEvent(lastEvent));
+          hitAnnotation.annotation.onEnter(PointerEnterEvent.fromMouseEvent(lastEvent));
         }
       }
-      if (hitAnnotation.annotation?.onHover != null) {
+      if (hitAnnotation.annotation?.onHover != null && lastEvent is PointerHoverEvent) {
         hitAnnotation.annotation.onHover(lastEvent);
       }
 
@@ -241,7 +251,7 @@ class MouseTracker {
         }
         if (trackedAnnotation.activeDevices.contains(deviceId)) {
           if (trackedAnnotation.annotation?.onExit != null) {
-            trackedAnnotation.annotation.onExit(PointerExitEvent.fromHoverEvent(lastEvent));
+            trackedAnnotation.annotation.onExit(PointerExitEvent.fromMouseEvent(lastEvent));
           }
           trackedAnnotation.activeDevices.remove(deviceId);
         }

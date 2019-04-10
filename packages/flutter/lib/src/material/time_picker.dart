@@ -965,10 +965,10 @@ class _DialPainter extends CustomPainter {
             textDirection: textDirection,
             onTap: label.onTap,
           ),
-          tags: Set<SemanticsTag>.from(const <SemanticsTag>[
+          tags: const <SemanticsTag>{
             // Used by tests to find this node.
             SemanticsTag('dial-label'),
-          ]),
+          },
         );
         nodes.add(node);
         labelTheta += labelThetaIncrement;
