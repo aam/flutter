@@ -486,12 +486,12 @@ void handleHttpClientGet(SendPort sendPort) {
         Flow flow = Flow.begin();
         Timeline.timeSync('handleHttpClientGet', () {
           _httpClient.getUrl(downloadRequest.uri)
-              .then<Uint8List>((HttpClientRequest request) {
-                  Future<Uint8List> list = Timeline.timeSync('handleHttpClientGet.getUrl', () {
+              .then<Transferrable>((HttpClientRequest request) {
+                  Future<Transferrable> list = Timeline.timeSync('handleHttpClientGet.getUrl', () {
                     downloadRequest.headers?.forEach((String name, String value) {
                       request.headers.add(name, value);
                     });
-                    return request.close().then<Uint8List>((HttpClientResponse response) {
+                    return request.close().then<Transferrable>((HttpClientResponse response) {
                       return Timeline.timeSync('handleHttpClientGet.request.close()', () {
                         if (response.statusCode != HttpStatus.ok)
                           throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, ${downloadRequest.uri}');
@@ -500,8 +500,9 @@ void handleHttpClientGet(SendPort sendPort) {
                     });
                   }, arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.step(flow.id));
                   return list;})
-              .then((Uint8List list) {
+              .then((Transferrable list) {
                   Timeline.timeSync('handleHttpClientGet.consolidate', () {
+                      print('Sending downloaded bytes to other isolate');
                       downloadRequest.sendPort.send(list);
                     },
                     arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.end(flow.id));
@@ -577,7 +578,9 @@ class NetworkImage extends ImageProvider<NetworkImage> {
     if (response.statusCode != HttpStatus.ok)
       throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, $resolved');
 
-    final Uint8List bytes = await consolidateHttpClientResponseBytes(response);
+    final Transferrable transferrable = await consolidateHttpClientResponseBytes(response);
+    Uint8List bytes = transferrable.materialize();
+    print('_loadAsync received ${bytes.length} bytes');
     int elapsed = DateTime.now().millisecondsSinceEpoch - started.millisecondsSinceEpoch;
     print("${DateTime.now()} Received image ${bytes.lengthInBytes} bytes in $elapsed ms: ${bytes.lengthInBytes/elapsed} bytes/ms");
     if (bytes.lengthInBytes == 0)
@@ -595,10 +598,10 @@ class NetworkImage extends ImageProvider<NetworkImage> {
 
     final Uri resolved = Uri.base.resolve(key.url);
 
-    Completer<Uint8List> completer = Completer<Uint8List>();
+    Completer<Transferrable> completer = Completer<Transferrable>();
     DateTime started = DateTime.now();
     RawReceivePort port = RawReceivePort((dynamic message) {
-        if (message is Uint8List) {
+        if (message is Transferrable) {
           completer.complete(message);
         } else {
           completer.completeError(message);
@@ -631,12 +634,13 @@ class NetworkImage extends ImageProvider<NetworkImage> {
       });
     }
 
-    dynamic bytes = await completer.future;
+    Transferrable transferrable = await completer.future;
     port.close();
 
-    if (bytes is! Uint8List) {
-      throw Exception(bytes);
-    }
+//    if (transferrable is! Transferrable) {
+//      throw Exception(transferrable);
+//    }
+    Uint8List bytes = transferrable.materialize();
     int elapsed = DateTime.now().millisecondsSinceEpoch - started.millisecondsSinceEpoch;
     print("${DateTime.now()} Received image ${bytes.lengthInBytes} bytes in $elapsed ms: ${bytes.lengthInBytes/elapsed} bytes/ms");
 
