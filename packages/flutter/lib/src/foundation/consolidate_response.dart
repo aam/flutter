@@ -23,16 +23,13 @@ Future<Transferrable> consolidateHttpClientResponseBytes(HttpClientResponse resp
   // response.contentLength is not trustworthy when GZIP is involved
   // or other cases where an intermediate transformer has been applied
   // to the stream.
-  final Completer<Transferrable> completer = Completer<Transferrable>.sync();
-  final List<TypedData> chunks = <TypedData>[];
-  int contentLength = 0;
+  final Completer<Transferrable> completer = Completer<Transferrable>();
+  final List<List<int>> chunks = <List<int>>[];
   response.listen((List<int> chunk) {
-    chunks.add(Uint8List.fromList(chunk));
-    contentLength += chunk.length;
+    chunks.add(chunk);
   }, onDone: () {
-    final Transferrable transferrable = Transferrable.fromList(contentLength, chunks);
-    completer.complete(transferrable);
-    print('Completed transferrable with $contentLength bytes');
+    print('chunks: ${chunks.length}');
+    completer.complete(Transferrable.fromList(chunks));
   }, onError: completer.completeError, cancelOnError: true);
 
   return completer.future;

@@ -640,11 +640,11 @@ class NetworkImage extends ImageProvider<NetworkImage> {
 //    if (transferrable is! Transferrable) {
 //      throw Exception(transferrable);
 //    }
-    Uint8List bytes = transferrable.materialize();
+    List<int> bytes = transferrable.materialize();
     int elapsed = DateTime.now().millisecondsSinceEpoch - started.millisecondsSinceEpoch;
-    print("${DateTime.now()} Received image ${bytes.lengthInBytes} bytes in $elapsed ms: ${bytes.lengthInBytes/elapsed} bytes/ms");
+    print("${DateTime.now()} Received image ${bytes.length} elements in $elapsed ms: ${bytes.length/elapsed} elements/ms");
 
-    if (bytes.lengthInBytes == 0)
+    if (bytes.length == 0)
       throw Exception('NetworkImage is an empty file: $resolved');
 
     return await PaintingBinding.instance.instantiateImageCodec(bytes);
