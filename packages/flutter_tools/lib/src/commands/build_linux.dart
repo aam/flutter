@@ -5,13 +5,10 @@
 import 'dart:async';
 
 import '../base/common.dart';
-import '../base/io.dart';
 import '../base/platform.dart';
-import '../base/process_manager.dart';
 import '../build_info.dart';
 import '../cache.dart';
-import '../convert.dart';
-import '../globals.dart';
+import '../linux/build_linux.dart';
 import '../project.dart';
 import '../runner/flutter_command.dart' show FlutterCommandResult;
 import 'build.dart';
@@ -55,30 +52,14 @@ class BuildLinuxCommand extends BuildSubCommand {
   Future<FlutterCommandResult> runCommand() async {
     Cache.releaseLockEarly();
     final BuildInfo buildInfo = getBuildInfo();
-    final FlutterProject flutterProject = await FlutterProject.current();
+    final FlutterProject flutterProject = FlutterProject.current();
     if (!platform.isLinux) {
       throwToolExit('"build linux" only supported on Linux hosts.');
     }
     if (!flutterProject.linux.existsSync()) {
       throwToolExit('No Linux desktop project configured.');
     }
-    final Process process = await processManager.start(<String>[
-      flutterProject.linux.buildScript.path,
-      Cache.flutterRoot,
-      buildInfo.isDebug ? 'debug' : 'release',
-    ], runInShell: true);
-    process.stderr
-      .transform(utf8.decoder)
-      .transform(const LineSplitter())
-      .listen(printError);
-    process.stdout
-      .transform(utf8.decoder)
-      .transform(const LineSplitter())
-      .listen(printStatus);
-    final int result = await process.exitCode;
-    if (result != 0) {
-      throwToolExit('Build process failed');
-    }
+    await buildLinux(flutterProject.linux, buildInfo);
     return null;
   }
 }
