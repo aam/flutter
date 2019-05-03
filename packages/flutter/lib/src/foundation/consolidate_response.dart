@@ -24,11 +24,10 @@ Future<Transferrable> consolidateHttpClientResponseBytes(HttpClientResponse resp
   // or other cases where an intermediate transformer has been applied
   // to the stream.
   final Completer<Transferrable> completer = Completer<Transferrable>();
-  final List<List<int>> chunks = <List<int>>[];
+  final List<Uint8List> chunks = <Uint8List>[];
   response.listen((List<int> chunk) {
     chunks.add(chunk);
   }, onDone: () {
-    print('chunks: ${chunks.length}');
     completer.complete(Transferrable.fromList(chunks));
   }, onError: completer.completeError, cancelOnError: true);
 
