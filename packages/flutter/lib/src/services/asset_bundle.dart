@@ -10,7 +10,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
-import 'platform_messages.dart';
+import 'binary_messenger.dart';
 
 /// A collection of resources used by the application.
 ///
@@ -121,8 +121,8 @@ class NetworkAssetBundle extends AssetBundle {
         'Unable to load asset: $key\n'
         'HTTP status code: ${response.statusCode}'
       );
-    final Transferrable transferrable = await consolidateHttpClientResponseBytes(response);
-    final Uint8List bytes = transferrable.materialize();
+    final TransferableTypedData transferrable = await consolidateHttpClientResponseBytes(response);
+    final Uint8List bytes = transferrable.materialize() as Uint8List;
     return bytes.buffer.asByteData();
   }
 
@@ -218,7 +218,7 @@ class PlatformAssetBundle extends CachingAssetBundle {
   Future<ByteData> load(String key) async {
     final Uint8List encoded = utf8.encoder.convert(Uri(path: Uri.encodeFull(key)).path);
     final ByteData asset =
-        await BinaryMessages.send('flutter/assets', encoded.buffer.asByteData());
+        await defaultBinaryMessenger.send('flutter/assets', encoded.buffer.asByteData());
     if (asset == null)
       throw FlutterError('Unable to load asset: $key');
     return asset;

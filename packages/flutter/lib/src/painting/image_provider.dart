@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'binding.dart';
+import 'debug.dart';
 import 'image_cache.dart';
 import 'image_stream.dart';
 
@@ -219,8 +220,9 @@ class ImageConfiguration {
 ///       // If the keys are the same, then we got the same image back, and so we don't
 ///       // need to update the listeners. If the key changed, though, we must make sure
 ///       // to switch our listeners to the new image stream.
-///       oldImageStream?.removeListener(_updateImage);
-///       _imageStream.addListener(_updateImage);
+///       final ImageStreamListener listener = ImageStreamListener(_updateImage);
+///       oldImageStream?.removeListener(listener);
+///       _imageStream.addListener(listener);
 ///     }
 ///   }
 ///
@@ -233,7 +235,7 @@ class ImageConfiguration {
 ///
 ///   @override
 ///   void dispose() {
-///     _imageStream.removeListener(_updateImage);
+///     _imageStream.removeListener(ImageStreamListener(_updateImage));
 ///     super.dispose();
 ///   }
 ///
@@ -476,32 +478,40 @@ class DownloadRequest {
   Map<String, String> headers;
 }
 
-void handleHttpClientGet(SendPort sendPort) {
+void handleHttpClientGet(List<dynamic> params) {
   final HttpClient _httpClient = HttpClient();
+  SendPort sendPort = params[0];
+  StreamController<ImageChunkEvent> chunkEvents = params[1];
 
   RawReceivePort receivePort = RawReceivePort(
       (DownloadRequest downloadRequest) {
         Flow flow = Flow.begin();
         Timeline.timeSync('handleHttpClientGet', () {
           _httpClient.getUrl(downloadRequest.uri)
-              .then<Transferrable>((HttpClientRequest request) {
-                  Future<Transferrable> list = Timeline.timeSync('handleHttpClientGet.getUrl', () {
+              .then<TransferableTypedData>((HttpClientRequest request) {
+                  Future<TransferableTypedData> list = Timeline.timeSync('handleHttpClientGet.getUrl', () {
                     downloadRequest.headers?.forEach((String name, String value) {
                       request.headers.add(name, value);
                     });
-                    return request.close().then<Transferrable>((HttpClientResponse response) {
+                    return request.close().then<TransferableTypedData>((HttpClientResponse response) {
                       return Timeline.timeSync('handleHttpClientGet.request.close()', () {
                         if (response.statusCode != HttpStatus.ok)
                           throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, ${downloadRequest.uri}');
-                        return consolidateHttpClientResponseBytes(response);
+                        return consolidateHttpClientResponseBytes(response,
+                            onBytesReceived: (int cumulative, int total) {
+                          chunkEvents.add(ImageChunkEvent(
+                            cumulativeBytesLoaded: cumulative,
+                            expectedTotalBytes: total,
+                          ));
+                        });
                       }, arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.step(flow.id));
                     });
                   }, arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.step(flow.id));
                   return list;})
-              .then((Transferrable list) {
+              .then((TransferableTypedData transferable) {
                   Timeline.timeSync('handleHttpClientGet.consolidate', () {
                       print('Sending downloaded bytes to other isolate');
-                      downloadRequest.sendPort.send(list);
+                      downloadRequest.sendPort.send(transferable);
                     },
                     arguments: <String, String> { 'uri': downloadRequest.uri.toString()}, flow: Flow.end(flow.id));
                   })
@@ -523,7 +533,7 @@ void handleHttpClientGet(SendPort sendPort) {
 /// See also:
 ///
 ///  * [Image.network] for a shorthand of an [Image] widget backed by [NetworkImage].
-// TODO(ianh): Find some way to honour cache headers to the extent that when the
+// TODO(ianh): Find some way to honor cache headers to the extent that when the
 // last reference to an image is released, we proactively evict the image from
 // our cache if the headers describe the image as having expired at that point.
 class NetworkImage extends ImageProvider<NetworkImage> {
@@ -550,8 +560,14 @@ class NetworkImage extends ImageProvider<NetworkImage> {
 
   @override
   ImageStreamCompleter load(NetworkImage key) {
+    // Ownership of this controller is handed off to [_loadAsync]; it is that
+    // method's responsibility to close the controller's stream when the image
+    // has been loaded or an error is thrown.
+    final StreamController<ImageChunkEvent> chunkEvents = StreamController<ImageChunkEvent>();
+
     return MultiFrameImageStreamCompleter(
-      codec: _loadAsyncOnDesignatedIsolate(key),
+      codec: _loadAsyncOnDesignatedIsolate(key, chunkEvents),
+      chunkEvents: chunkEvents.stream,
       scale: key.scale,
       informationCollector: () sync* {
         yield DiagnosticsProperty<ImageProvider>('Image provider', this);
@@ -560,46 +576,73 @@ class NetworkImage extends ImageProvider<NetworkImage> {
     );
   }
 
-  static final HttpClient _httpClient = HttpClient();
+  // Do not access this field directly; use [_httpClient] instead.
+  // We set `autoUncompress` to false to ensure that we can trust the value of
+  // the `Content-Length` HTTP header. We automatically uncompress the content
+  // in our call to [consolidateHttpClientResponseBytes].
+  static final HttpClient _sharedHttpClient = HttpClient()..autoUncompress = false;
 
-  Future<ui.Codec> _loadAsync(NetworkImage key) async {
-    assert(key == this);
+  static HttpClient get _httpClient {
+    HttpClient client = _sharedHttpClient;
+    assert(() {
+      if (debugNetworkImageHttpClientProvider != null)
+        client = debugNetworkImageHttpClientProvider();
+      return true;
+    }());
+    return client;
+  }
 
-    DateTime started = DateTime.now();
+  Future<ui.Codec> _loadAsync(
+    NetworkImage key,
+    StreamController<ImageChunkEvent> chunkEvents,
+  ) async {
+    try {
+      assert(key == this);
 
-    final Uri resolved = Uri.base.resolve(key.url);
-    final HttpClientRequest request = await _httpClient.getUrl(resolved);
-    headers?.forEach((String name, String value) {
-      request.headers.add(name, value);
-    });
-    final HttpClientResponse response = await request.close();
-    if (response.statusCode != HttpStatus.ok)
-      throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, $resolved');
+      final Uri resolved = Uri.base.resolve(key.url);
+      final HttpClientRequest request = await _httpClient.getUrl(resolved);
+      headers?.forEach((String name, String value) {
+        request.headers.add(name, value);
+      });
+      final HttpClientResponse response = await request.close();
+      if (response.statusCode != HttpStatus.ok)
+        throw Exception('HTTP request failed, statusCode: ${response?.statusCode}, $resolved');
 
-    final Transferrable transferrable = await consolidateHttpClientResponseBytes(response);
-    Uint8List bytes = transferrable.materialize();
-    print('_loadAsync received ${bytes.length} bytes');
-    int elapsed = DateTime.now().millisecondsSinceEpoch - started.millisecondsSinceEpoch;
-    print("${DateTime.now()} Received image ${bytes.lengthInBytes} bytes in $elapsed ms: ${bytes.lengthInBytes/elapsed} bytes/ms");
-    if (bytes.lengthInBytes == 0)
-      throw Exception('NetworkImage is an empty file: $resolved');
+      final TransferableTypedData transferable = await consolidateHttpClientResponseBytes(
+        response,
+        client: _httpClient,
+        onBytesReceived: (int cumulative, int total) {
+          chunkEvents.add(ImageChunkEvent(
+            cumulativeBytesLoaded: cumulative,
+            expectedTotalBytes: total,
+          ));
+        },
+      );
+      Uint8List bytes = transferable.materialize().asUint8List();
+      if (bytes.lengthInBytes == 0)
+        throw Exception('NetworkImage is an empty file: $resolved');
 
-    return PaintingBinding.instance.instantiateImageCodec(bytes);
+      return PaintingBinding.instance.instantiateImageCodec(bytes);
+    } finally {
+      chunkEvents.close();
+    }
   }
 
   static Future<Isolate> _pendingLoader;
   static List<Function> _pendingLoaderUsers;
   static SendPort _requestPort;
 
-  Future<ui.Codec> _loadAsyncOnDesignatedIsolate(NetworkImage key) async {
+  Future<ui.Codec> _loadAsyncOnDesignatedIsolate(
+      NetworkImage key,
+      StreamController<ImageChunkEvent> chunkEvents,) async {
     assert(key == this);
 
     final Uri resolved = Uri.base.resolve(key.url);
 
-    Completer<Transferrable> completer = Completer<Transferrable>();
+    Completer<TransferableTypedData> completer = Completer<TransferableTypedData>();
     DateTime started = DateTime.now();
     RawReceivePort port = RawReceivePort((dynamic message) {
-        if (message is Transferrable) {
+        if (message is TransferableTypedData) {
           completer.complete(message);
         } else {
           completer.completeError(message);
@@ -614,14 +657,14 @@ class NetworkImage extends ImageProvider<NetworkImage> {
       if (_pendingLoader == null) {
         _pendingLoaderUsers = <Function>[];
         _pendingLoader =
-          Isolate.spawn<SendPort>(
+          Isolate.spawn<List<dynamic>>(
             handleHttpClientGet,
-            RawReceivePort((SendPort sendPort) {
+            <dynamic> [RawReceivePort((SendPort sendPort) {
               _requestPort = sendPort;
               for (Function function in _pendingLoaderUsers) {
                 function(sendPort);
               }
-            }).sendPort
+            }).sendPort, chunkEvents],
           )..then<Isolate>((Isolate isolate) {
             }).catchError((dynamic error, StackTrace stackTrace) {
               completer.completeError(error, stackTrace);
@@ -632,13 +675,10 @@ class NetworkImage extends ImageProvider<NetworkImage> {
       });
     }
 
-    Transferrable transferrable = await completer.future;
+    TransferableTypedData transferable = await completer.future;
     port.close();
 
-//    if (transferrable is! Transferrable) {
-//      throw Exception(transferrable);
-//    }
-    List<int> bytes = transferrable.materialize();
+    List<int> bytes = transferable.materialize().asUint8List();
     int elapsed = DateTime.now().millisecondsSinceEpoch - started.millisecondsSinceEpoch;
     print("${DateTime.now()} Received image ${bytes.length} elements in $elapsed ms: ${bytes.length/elapsed} elements/ms");
 

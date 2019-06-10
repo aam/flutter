@@ -149,6 +149,13 @@ abstract class GlobalKey<T extends State<StatefulWidget>> extends Key {
     assert(() {
       assert(parent != null);
       if (_debugReservations.containsKey(this) && _debugReservations[this] != parent) {
+        // Reserving a new parent while the old parent is not attached is ok.
+        // This can happen when a renderObject detaches and re-attaches to rendering
+        // tree multiple times.
+        if (_debugReservations[this].renderObject?.attached == false) {
+          _debugReservations[this] = parent;
+          return true;
+        }
         // It's possible for an element to get built multiple times in one
         // frame, in which case it'll reserve the same child's key multiple
         // times. We catch multiple children of one widget having the same key
@@ -991,6 +998,7 @@ abstract class State<T extends StatefulWidget> extends Diagnosticable {
   ///    to the new one if the updated widget configuration requires
   ///    replacing the object.
   ///  * In [dispose], unsubscribe from the object.
+  ///
   /// {@endtemplate}
   ///
   /// You cannot use [BuildContext.inheritFromWidgetOfExactType] from this
@@ -1656,7 +1664,15 @@ abstract class MultiChildRenderObjectWidget extends RenderObjectWidget {
   /// objects.
   MultiChildRenderObjectWidget({ Key key, this.children = const <Widget>[] })
     : assert(children != null),
-      assert(!children.any((Widget child) => child == null)), // https://github.com/dart-lang/sdk/issues/29276
+      assert(() {
+        final int index = children.indexOf(null);
+        if (index >= 0) {
+          throw AssertionError(
+            "The widget's children must not contain any null values, but a null value was found at index $index"
+          );
+        }
+        return true;
+      }()), // https://github.com/dart-lang/sdk/issues/29276
       super(key: key);
 
   /// The widgets below this widget in the tree.
@@ -2565,7 +2581,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
   //
   // See also:
   //
-  //  * https://www.dartlang.org/articles/dart-vm/numeric-computation, which
+  //  * https://dart.dev/articles/dart-vm/numeric-computation, which
   //    explains how numbers are represented in Dart.
   @override
   int get hashCode => _cachedHash;
@@ -3234,7 +3250,7 @@ abstract class Element extends DiagnosticableTree implements BuildContext {
           'If you need some sizing information during build to decide which '
           'widgets to build, consider using a LayoutBuilder widget, which can '
           'tell you the layout constraints at a given location in the tree. See '
-          '<https://docs.flutter.io/flutter/widgets/LayoutBuilder-class.html> '
+          '<https://api.flutter.dev/flutter/widgets/LayoutBuilder-class.html> '
           'for more details.\n'
           '\n'
           'The size getter was called for the following element:\n'
