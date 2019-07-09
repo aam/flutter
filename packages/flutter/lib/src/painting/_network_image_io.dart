@@ -110,7 +110,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
           assert(_pendingLoadRequests == null);
           _pendingLoadRequests = <_PendingLoadRequest>[];
           _pendingLoader = _setupIsolate()..then((Isolate isolate) {
-              final RawReceivePort handleError = RawReceivePort((List<String> errorAndStackTrace) {
+              final RawReceivePort handleError = RawReceivePort((List<dynamic> errorAndStackTrace) {
                 _cleanupDueToError(errorAndStackTrace[0]);
               });
               isolate.addErrorListener(handleError.sendPort);
@@ -121,7 +121,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
         }
         // Record download request so it can either send a request when isolate is ready or handle errors.
         _pendingLoadRequests.add(_PendingLoadRequest(
-            (SendPort sendPort) { sendPort.send(downloadRequest); },
+            (SendPort sendPort) { sendPort.send(_WorkerRequest.download(downloadRequest)); },
             (dynamic error) { downloadRequest.sendPort.send(_DownloadResponse.error(error.toString())); }
         ));
       }
@@ -320,7 +320,15 @@ class _ListenerAwareMultiFrameImageStreamCompleter extends MultiFrameImageStream
   @override
   void addListener(ImageStreamListener listener) {
     if (!hasListeners) {
-      requestPort.send(const _WorkerRequest.control(_ControlChunkEventsRequest.start));
+      const _WorkerRequest start = _WorkerRequest.control(_ControlChunkEventsRequest.start);
+      if (requestPort != null) {
+        requestPort.send(start);
+      } else {
+        NetworkImage._pendingLoadRequests.add(
+          _PendingLoadRequest(
+              (SendPort sendPort) { sendPort.send(start); },
+              (dynamic error) {}));
+      }
     }
     super.addListener(listener);
   }
@@ -329,7 +337,15 @@ class _ListenerAwareMultiFrameImageStreamCompleter extends MultiFrameImageStream
   void removeListener(ImageStreamListener listener) {
     super.removeListener(listener);
     if (!hasListeners) {
-      requestPort.send(const _WorkerRequest.control(_ControlChunkEventsRequest.stop));
+      const _WorkerRequest stop = _WorkerRequest.control(_ControlChunkEventsRequest.stop);
+      if (requestPort != null) {
+        requestPort.send(stop);
+      } else {
+        NetworkImage._pendingLoadRequests.add(
+            _PendingLoadRequest(
+                    (SendPort sendPort) { sendPort.send(stop); },
+                    (dynamic error) {}));
+      }
     }
   }
 
