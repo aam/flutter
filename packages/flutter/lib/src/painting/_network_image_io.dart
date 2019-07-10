@@ -45,7 +45,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
     // the image has been loaded or an error is thrown.
     final StreamController<ImageChunkEvent> chunkEvents = StreamController<ImageChunkEvent>();
 
-    return MultiFrameImageStreamCompleter(
+    return _ListenerAwareMultiFrameImageStreamCompleter(
       codec: _loadAsync(key, chunkEvents),
       chunkEvents: chunkEvents.stream,
       scale: key.scale,
@@ -55,6 +55,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
           DiagnosticsProperty<image_provider.NetworkImage>('Image key', key),
         ];
       },
+      requestPort: _requestPort,
     );
   }
 
@@ -102,7 +103,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
       if (_requestPort != null) {
         // If worker isolate is properly set up ([_requestPort] is holding
         // initialized [SendPort]), then just send download request down to it.
-        _requestPort.send(downloadRequest);
+        _requestPort.send(_WorkerRequest.download(downloadRequest));
       } else {
         if (_pendingLoader == null) {
           // If worker isolate creation was not started, start creation now.
@@ -120,7 +121,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
         }
         // Record download request so it can either send a request when isolate is ready or handle errors.
         _pendingLoadRequests.add(_PendingLoadRequest(
-            (SendPort sendPort) { sendPort.send(downloadRequest); },
+            (SendPort sendPort) { sendPort.send(_WorkerRequest.download(downloadRequest)); },
             (dynamic error) { downloadRequest.sendPort.send(_DownloadResponse.error(error.toString())); }
         ));
       }
@@ -223,6 +224,21 @@ class _DownloadRequest {
   final HttpClientProvider httpClientProvider;
 }
 
+enum _ControlChunkEventsRequest {
+  start, stop
+}
+
+@immutable
+class _WorkerRequest {
+  const _WorkerRequest.download(this.downloadRequest) : controlRequest = null,
+      assert(downloadRequest != null);
+  const _WorkerRequest.control(this.controlRequest) : downloadRequest = null,
+      assert(controlRequest != null);
+
+  final _DownloadRequest downloadRequest;
+  final _ControlChunkEventsRequest controlRequest;
+}
+
 // We set `autoUncompress` to false to ensure that we can trust the value of
 // the `Content-Length` HTTP header. We automatically uncompress the content
 // in our call to [consolidateHttpClientResponseBytes].
@@ -234,8 +250,19 @@ void _initializeWorkerIsolate(SendPort mainIsolateSendPort) {
   Timer idleTimer;
   RawReceivePort downloadRequestHandler;
 
+  bool sendChunkEvents;
+
   // Sets up a handler that processes download requests messages.
-  downloadRequestHandler = RawReceivePort((_DownloadRequest downloadRequest) async {
+  downloadRequestHandler = RawReceivePort((_WorkerRequest workerRequest) async {
+    if (workerRequest.controlRequest != null) {
+      final _ControlChunkEventsRequest request = workerRequest.controlRequest;
+      sendChunkEvents = request == _ControlChunkEventsRequest.start;
+      return;
+    }
+
+    final _DownloadRequest downloadRequest = workerRequest.downloadRequest;
+    assert(downloadRequest != null);
+
     ongoingRequests++;
     idleTimer?.cancel();
     final HttpClient httpClient =
@@ -256,11 +283,13 @@ void _initializeWorkerIsolate(SendPort mainIsolateSendPort) {
       final TransferableTypedData transferable = await consolidateHttpClientResponseBytes(
           response,
           onBytesReceived: (int cumulative, int total) {
-             downloadRequest.sendPort.send(_DownloadResponse.chunkEvent(
-                 ImageChunkEvent(
-                     cumulativeBytesLoaded: cumulative,
-                     expectedTotalBytes: total,
-                 )));
+            if (sendChunkEvents) {
+              downloadRequest.sendPort.send(_DownloadResponse.chunkEvent(
+                  ImageChunkEvent(
+                    cumulativeBytesLoaded: cumulative,
+                    expectedTotalBytes: total,
+                  )));
+            }
           });
       downloadRequest.sendPort.send(_DownloadResponse.bytes(transferable));
     } catch (error) {
@@ -277,4 +306,48 @@ void _initializeWorkerIsolate(SendPort mainIsolateSendPort) {
   });
 
   mainIsolateSendPort.send(downloadRequestHandler.sendPort);
+}
+
+class _ListenerAwareMultiFrameImageStreamCompleter extends MultiFrameImageStreamCompleter {
+  _ListenerAwareMultiFrameImageStreamCompleter({
+      @required Future<ui.Codec> codec,
+      @required double scale,
+      Stream<ImageChunkEvent> chunkEvents,
+      InformationCollector informationCollector,
+      this.requestPort,
+  }) : super(codec: codec, scale: scale, chunkEvents: chunkEvents, informationCollector: informationCollector);
+
+  @override
+  void addListener(ImageStreamListener listener) {
+    if (!hasListeners) {
+      const _WorkerRequest start = _WorkerRequest.control(_ControlChunkEventsRequest.start);
+      if (requestPort != null) {
+        requestPort.send(start);
+      } else {
+        NetworkImage._pendingLoadRequests.add(
+          _PendingLoadRequest(
+              (SendPort sendPort) { sendPort.send(start); },
+              (dynamic error) {}));
+      }
+    }
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(ImageStreamListener listener) {
+    super.removeListener(listener);
+    if (!hasListeners) {
+      const _WorkerRequest stop = _WorkerRequest.control(_ControlChunkEventsRequest.stop);
+      if (requestPort != null) {
+        requestPort.send(stop);
+      } else {
+        NetworkImage._pendingLoadRequests.add(
+            _PendingLoadRequest(
+                    (SendPort sendPort) { sendPort.send(stop); },
+                    (dynamic error) {}));
+      }
+    }
+  }
+
+  SendPort requestPort;
 }
