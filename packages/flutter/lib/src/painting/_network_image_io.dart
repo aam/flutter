@@ -20,7 +20,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
   /// Creates an object that fetches the image at the given URL.
   ///
   /// The arguments [url] and [scale] must not be null.
-  const NetworkImage(this.url, { this.scale = 1.0, this.headers })
+  const NetworkImage(this.url, { this.scale = 1.0, this.headers, this.trustedCertificateBytes })
     : assert(url != null),
       assert(scale != null);
 
@@ -32,6 +32,9 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
 
   @override
   final Map<String, String> headers;
+
+  @override
+  final List<int> trustedCertificateBytes;
 
   @override
   Future<NetworkImage> obtainKey(image_provider.ImageConfiguration configuration) {
@@ -103,6 +106,7 @@ class NetworkImage extends image_provider.ImageProvider<image_provider.NetworkIm
         downloadResponseHandler.sendPort,
         resolved,
         headers,
+        trustedCertificateBytes,
         httpClientProvider,
       );
       if (_requestPort != null) {
@@ -212,12 +216,13 @@ class _DownloadResponse {
 
 @immutable
 class _DownloadRequest {
-  const _DownloadRequest(this.sendPort, this.uri, this.headers, this.httpClientProvider) :
+  const _DownloadRequest(this.sendPort, this.uri, this.headers, this.trustedCertificateBytes, this.httpClientProvider) :
       assert(sendPort != null), assert(uri != null);
 
   final SendPort sendPort;
   final Uri uri;
   final Map<String, String> headers;
+  final List<int> trustedCertificateBytes;
   final HttpClientProvider httpClientProvider;
 
   void handleError(dynamic error) { sendPort.send(_DownloadResponse.error(error)); }
@@ -226,7 +231,39 @@ class _DownloadRequest {
 // We set `autoUncompress` to false to ensure that we can trust the value of
 // the `Content-Length` HTTP header. We automatically uncompress the content
 // in our call to [getHttpClientResponseBytes].
-final HttpClient _sharedHttpClient = HttpClient()..autoUncompress = false;
+HttpClient __sharedHttpClient;
+List<int> __sharedTrustedCertificateBytes;
+HttpClient _sharedHttpClient(List<int> trustedCertificateBytes) {
+  // Ensure trusted certificate bytes haven't changed.
+  if (__sharedHttpClient != null) {
+    if ((trustedCertificateBytes == null || __sharedTrustedCertificateBytes == null)
+        && (trustedCertificateBytes != __sharedTrustedCertificateBytes)) {
+      __sharedHttpClient = null;
+    } else {
+      if (trustedCertificateBytes != null && __sharedTrustedCertificateBytes != null) {
+        if (trustedCertificateBytes.length != __sharedTrustedCertificateBytes.length) {
+          __sharedHttpClient = null;
+        } else {
+          for (int i = 0; i < trustedCertificateBytes.length; i++) {
+            if (trustedCertificateBytes[i] != __sharedTrustedCertificateBytes[i]) {
+              __sharedHttpClient = null;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  if (__sharedHttpClient == null) {
+    __sharedTrustedCertificateBytes = trustedCertificateBytes;
+    final SecurityContext securityContext =
+        trustedCertificateBytes == null ?
+            null :
+            SecurityContext()..setTrustedCertificatesBytes(trustedCertificateBytes);
+    __sharedHttpClient = HttpClient(context: securityContext)..autoUncompress = false;
+  }
+  return __sharedHttpClient;
+}
 const Duration _idleDuration = Duration(seconds: 60);
 
 /// Sets up the worker isolate to listen for incoming [_DownloadRequest]s from
@@ -248,7 +285,7 @@ void _initializeWorkerIsolate(SendPort handshakeSendPort) {
     idleTimer?.cancel();
     final HttpClient httpClient = downloadRequest.httpClientProvider != null
         ? downloadRequest.httpClientProvider()
-        : _sharedHttpClient;
+        : _sharedHttpClient(downloadRequest.trustedCertificateBytes);
 
     try {
       final HttpClientRequest request = await httpClient.getUrl(downloadRequest.uri);

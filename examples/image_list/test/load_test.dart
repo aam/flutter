@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_list/main.dart';
 import 'package:mockito/mockito.dart';
@@ -523,6 +525,52 @@ HttpClient sampleHttpProvider() {
 Future<void> main() async {
   group(NetworkImage, ()
   {
+    test('wait for delayed future', () async {
+      final Future<int> future = Future<int>.delayed(const Duration(seconds: 1), () {
+        return 42;
+      });
+      expect(await future, equals(42));
+    });
+
+    testWidgets('wait for delayed future in testWidgets', (WidgetTester tester) async {
+      final Future<int> future = Future<int>.delayed(const Duration(seconds: 1), () {
+        return 42;
+      });
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(await future, equals(42));
+    });
+
+    test('wait for delayed http loading future in test', () async {
+      final Completer<TransferableTypedData> completer = Completer<TransferableTypedData>();
+
+      final ReceivePort receivePort = ReceivePort()..listen((dynamic message) {
+        completer.complete(message);
+      });
+      await Isolate.spawn<SendPort>(_isolateWorker, receivePort.sendPort);
+      final TransferableTypedData data = await completer.future;
+
+      final ByteBuffer bytes = data.materialize();
+      expect(bytes.lengthInBytes, equals(kSamplePng.length));
+    });
+
+    testWidgets('wait for delayed http loading future in testWidgets', (WidgetTester tester) async {
+      final Completer<TransferableTypedData> completer =
+          await tester.runAsync<Completer<TransferableTypedData>>(() async => Completer<TransferableTypedData>());
+      final ReceivePort receivePort = ReceivePort()..listen((dynamic message) {
+        completer.complete(message);
+      });
+      await tester.runAsync(() async => Isolate.spawn<SendPort>(_isolateWorker, receivePort.sendPort));
+      final TransferableTypedData data = await tester.runAsync<TransferableTypedData>(() async => completer.future);
+      receivePort.close();
+
+      final ByteBuffer bytes = data?.materialize();
+      expect(bytes?.lengthInBytes, equals(kSamplePng.length));
+    });
+  });
+
+  group(NetworkImage, ()
+  {
     testWidgets('Ensure images are loaded', (WidgetTester tester) async {
       debugNetworkImageHttpClientProvider = sampleHttpProvider;
 
@@ -537,7 +585,6 @@ Future<void> main() async {
           await precacheImage(image.image, e);
         });
       }
-
       await tester.pumpAndSettle();
       await expectLater(
         find.byType(MyHomePage),
@@ -550,4 +597,14 @@ Future<void> main() async {
       debugNetworkImageHttpClientProvider = null;
     });
   });
+}
+
+Future<void> _isolateWorker(SendPort sendPort) async {
+  final HttpClient httpClient = sampleHttpProvider();
+
+  final HttpClientRequest request = await httpClient.getUrl(Uri.parse('http://downloadRequest.uri'));
+  final HttpClientResponse response = await request.close();
+
+  final TransferableTypedData data = await getHttpClientResponseBytes(response);
+  sendPort.send(data);
 }

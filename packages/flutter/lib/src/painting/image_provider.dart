@@ -313,7 +313,8 @@ abstract class ImageProvider<T> {
       key.then<void>((T key) {
         obtainedKey = key;
         final ImageStreamCompleter completer = PaintingBinding.instance
-            .imageCache.putIfAbsent(key, () => load(key), onError: handleError);
+            .imageCache.putIfAbsent(key, () => _runAsync<ImageStreamCompleter>(() => load(key)),
+            onError: handleError);
         if (completer != null) {
           stream.setCompleter(completer);
         }
@@ -384,6 +385,29 @@ abstract class ImageProvider<T> {
 
   @override
   String toString() => '$runtimeType()';
+}
+
+T _runAsync<T>(Function callback) {
+  Zone realAsyncZone;
+  assert(() {
+    realAsyncZone = Zone.current.fork(
+        specification: ZoneSpecification(
+          scheduleMicrotask: (Zone self, ZoneDelegate parent, Zone zone,
+              void f()) {
+            Zone.root.scheduleMicrotask(f);
+          },
+          createTimer: (Zone self, ZoneDelegate parent, Zone zone,
+              Duration duration, void f()) {
+            return Zone.root.createTimer(duration, f);
+          },
+          createPeriodicTimer: (Zone self, ZoneDelegate parent, Zone zone,
+              Duration period, void f(Timer timer)) {
+            return Zone.root.createPeriodicTimer(period, f);
+          },
+        ));
+    return true;
+  }());
+  return realAsyncZone != null ? realAsyncZone.run(callback): callback();
 }
 
 /// Key for the image obtained by an [AssetImage] or [ExactAssetImage].
@@ -482,7 +506,7 @@ abstract class NetworkImage extends ImageProvider<NetworkImage> {
   /// Creates an object that fetches the image at the given URL.
   ///
   /// The arguments [url] and [scale] must not be null.
-  const factory NetworkImage(String url, { double scale, Map<String, String> headers }) = network_image.NetworkImage;
+  const factory NetworkImage(String url, { double scale, Map<String, String> headers, List<int> trustedCertificateBytes }) = network_image.NetworkImage;
 
   /// The URL from which the image will be fetched.
   String get url;
@@ -495,6 +519,12 @@ abstract class NetworkImage extends ImageProvider<NetworkImage> {
   /// When running flutter on the web, headers are not used.
   Map<String, String> get headers;
 
+  /// The certificate that will be used with [HttpClient.get] to fetch image from network.
+  ///
+  /// When running flutter on the web, headers are not used.
+  List<int> get trustedCertificateBytes;
+
+  /// Launches asynchronous load of an image identified by [key].
   @override
   ImageStreamCompleter load(NetworkImage key);
 }

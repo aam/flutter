@@ -72,18 +72,7 @@ mhBKvYQc85gja0s1c+1VXA==
 -----END PRIVATE KEY-----
 ''';
 
-class MyHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext context) {
-    return super.createHttpClient(
-        (context ?? SecurityContext())..setTrustedCertificatesBytes(certificate.codeUnits)
-    );
-  }
-}
-
 Future<void> main() async {
-  HttpOverrides.global = MyHttpOverrides();
-
   final SecurityContext serverContext = SecurityContext()
     ..useCertificateChainBytes(certificate.codeUnits)
     ..usePrivateKeyBytes(privateKey.codeUnits);
@@ -154,6 +143,7 @@ class _MyHomePageState extends State<MyHomePage> with TickerProviderStateMixin {
   Widget createImage(final int index, final Completer<bool> completer) {
     return Image.network(
         'https://localhost:${widget.port}/${_counter * IMAGES + index}',
+        trustedCertificateBytes: certificate.codeUnits,
         frameBuilder: (
           BuildContext context,
           Widget child,
