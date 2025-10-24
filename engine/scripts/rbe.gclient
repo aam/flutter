@@ -1,10 +1,10 @@
-# Copy this file to the root of your flutter checkout to bootstrap gclient
+# Copy this file to the folder above your flutter checkout to bootstrap gclient
 # or just run gclient sync in an empty directory with this file.
 solutions = [
   {
     "deps_file": "DEPS",
     "managed": False,
-    "name": ".",
+    "name": "flutter",
     "safesync_url": "",
 
     # If you are using SSH to connect to GitHub, change the URL to:
